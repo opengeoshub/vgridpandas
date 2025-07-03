@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vgridpandas"
-dynamic = ["version"]
+dynamic = ["version", "readme"]
 description = "Integration of DGGS and GeoPandas"
 license = { file = "LICENSE" }
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
@@ -32,8 +32,7 @@ where = ["."]
 include = ["vgridpandas*"]
 
 [tool.setuptools.dynamic]
-readme = {file = ["README.md"], content-type = "text/markdown"}
-long_description = {file = "README.md", content-type = "text/markdown"}
+readme = {file = "README.md", content-type = "text/markdown"}
 
 [tool.codespell]
 skip = "*.ipynb"

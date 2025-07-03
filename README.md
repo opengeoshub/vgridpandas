@@ -1,29 +1,18 @@
-<img align="left" src="https://i.imgur.com/OH8DoTA.png" alt="H3 Logo" width="500">
 
-
-&nbsp;
-
+![image](docs/assets/logo.png)
 # VgridPandas
-Integrates [vgrid](https://github.com/opengeoshub/vgrid) with  [GeoPandas](https://github.com/geopandas/geopandas)
-and [Pandas](https://github.com/pandas-dev/pandas).
 [![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/master/notebook/00-intro.ipynb)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD?filepath=%2Fnotebook%2F00-intro.ipynb)
 [![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation Status](https://readthedocs.org/projects/pip/badge/?version=stable)](https://pip.pypa.io/en/stable/?badge=stable)
 
-&nbsp;
-
+Integrates [vgrid](https://github.com/opengeoshub/vgrid) with  [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas).
 
 ---
 
 <h3 align="center">
   ⬢ <a href="https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD?filepath=%2Fnotebook%2F00-intro.ipynb">Try it out</a> ⬢
 </h3>
-
----
-<p align="center">
-    <a href="https://github.com/opengeoshub/vgridpandas"><img src="https://i.imgur.com/GZWsC8G.gif" alt="example usage" width="450"></a>
-</p>
 
 
 ## Installation
@@ -111,11 +100,11 @@ often simplifying common workflows into a single command.
 
 ### Further examples
 For more examples, see the 
-[example notebooks](https://nbviewer.jupyter.org/github/DahnJ/VgridPandas/tree/master/notebook/).
+[example notebooks](https://nbviewer.jupyter.org/github/opengeoshub/vgridpandas/tree/master/docs/notebooks/).
 
 ## API
 For a full API documentation and more usage examples, see the 
-[documentation](https://VgridPandas.readthedocs.io/en/latest/).
+[documentation](https://vgridpandas.gishub.vn).
 
 
 **Any suggestions and contributions are very welcome**!
