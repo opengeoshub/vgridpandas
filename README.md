@@ -1,12 +1,16 @@
-
-![image](docs/assets/logo.png)
 # VgridPandas
+Integrates [vgrid](https://github.com/opengeoshub/vgrid) with  [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas).
+
+<div align="center">
+  <img src="docs/assets/vgridpandas.svg" alt="vgridpandas logo">
+</div>
+
 [![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/master/notebook/00-intro.ipynb)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD?filepath=%2Fnotebook%2F00-intro.ipynb)
 [![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation Status](https://readthedocs.org/projects/pip/badge/?version=stable)](https://pip.pypa.io/en/stable/?badge=stable)
 
-Integrates [vgrid](https://github.com/opengeoshub/vgrid) with  [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas).
+
 
 ---
 

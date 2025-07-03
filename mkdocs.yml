@@ -63,7 +63,7 @@ plugins:
           execute_ignore:
               [
                   "changelog_update.py",
-                  "notebooks/00_intro.ipynb",
+                  "notebooks/00_h3.ipynb",
               ]
 
 markdown_extensions:
@@ -90,14 +90,13 @@ nav:
     - Book: https://book.opengeoshub.vn
     - Installation: installation.md
     - Get Started: get-started.md
-    - Usage: notebooks/00_intro.ipynb
-    - Web App: https://vgrid.vn
+    - Usage: notebooks/00_h3.ipynb
     - Tutorials: tutorials.md
     - Contributing: contributing.md
     - FAQ: faq.md
     - Changelog: changelog.md
-    - Report Issues: https://github.com/opengeoshub/vgrid/issues
+    - Report Issues: https://github.com/opengeoshub/vgridpandas/issues
     - API Reference:
           - dggsconversion: dggsconversion.md
     - Notebooks:
-          - notebooks/00_intro.ipynb   
+          - notebooks/00_h3.ipynb   

@@ -15,7 +15,7 @@ from geopandas.geodataframe import GeoDataFrame
 from .const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 from .util.decorator import catch_invalid_h3_address, doc_standard
 from .util.functools import wrapped_partial
-from .util.shapely import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from .util.geometry import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -28,16 +28,16 @@ class H3Accessor:
     # H3 API
     # These methods simply mirror the H3 API and apply H3 functions to all rows
 
-    def geo_to_h3(
+    def latlon2h3(
         self,
         resolution: int,
         lat_col: str = "lat",
-        lng_col: str = "lng",
+        lng_col: str = "lon",
         set_index: bool = True,
     ) -> AnyDataFrame:
         """Adds H3 index to (Geo)DataFrame.
 
-        pd.DataFrame: uses `lat_col` and `lng_col` (default `lat` and `lng`)
+        pd.DataFrame: uses `lat_col` and `lng_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
 
         Assumes coordinates in epsg=4326.
@@ -49,7 +49,7 @@ class H3Accessor:
         lat_col : str
             Name of the latitude column (if used), default 'lat'
         lng_col : str
-            Name of the longitude column (if used), default 'lng'
+            Name of the longitude column (if used), default 'lon'
         set_index : bool
             If True, the columns with H3 addresses is set as index, default 'True'
 
@@ -102,7 +102,7 @@ class H3Accessor:
             return df.set_index(colname)
         return df
 
-    def h3_to_geo(self) -> GeoDataFrame:
+    def h32latlon(self) -> GeoDataFrame:
         """Add `geometry` with centroid of each H3 address to the DataFrame.
         Assumes H3 index.
 
@@ -136,7 +136,7 @@ class H3Accessor:
             lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
         )
 
-    def h3_to_geo_boundary(self) -> GeoDataFrame:
+    def h32geo(self) -> GeoDataFrame:
         """Add `geometry` with H3 hexagons to the DataFrame. Assumes H3 index.
 
         Returns
@@ -301,7 +301,7 @@ class H3Accessor:
         return self._apply_index_assign(func, column_name, list)
 
     @doc_standard("h3_{resolution}", "containing the parent of each H3 address")
-    def h3_to_parent(self, resolution: int = None) -> AnyDataFrame:
+    def h32parent(self, resolution: int = None) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -432,7 +432,7 @@ class H3Accessor:
     # H3-Pandas Extended API
     # These methods extend the API to provide a convenient way to simplify workflows
 
-    def geo_to_h3_aggregate(
+    def geo2h3_aggregate(
         self,
         resolution: int,
         operation: Union[dict, str, Callable] = "sum",
@@ -498,7 +498,7 @@ class H3Accessor:
         )
         return grouped.h3.h3_to_geo_boundary() if return_geometry else grouped
 
-    def h3_to_parent_aggregate(
+    def h32parent_aggregate(
         self,
         resolution: int,
         operation: Union[dict, str, Callable] = "sum",
