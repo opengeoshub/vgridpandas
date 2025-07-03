@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vgridpandas"
+dynamic = ["version"]
+description = "Integration of DGGS and GeoPandas"
+license = { file = "LICENSE" }
+authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "vgrid",  
+    "typing-extensions"
+]
+
+[tool.setuptools_scm]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov", "ruff"]
+docs = ["sphinx", "numpydoc", "pytest-sphinx-theme", "typing-extensions"]
+
+[project.urls]
+Homepage = "https://github.com/opengeoshub/vgridpandas"
+Download = "https://github.com/opengeoshub/vgridpandas/releases"
+
+[tool.setuptools]
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vgridpandas*"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"], content-type = "text/markdown"}
+long_description = {file = "README.md", content-type = "text/markdown"}
+
+[tool.codespell]
+skip = "*.ipynb"
+
+[tool.ruff]
+exclude = ["**/*.ipynb"]
+
+[tool.ruff.lint]
+ignore = ["E203"]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 88
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::UserWarning"]

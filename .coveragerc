@@ -1,0 +1,10 @@
+[run]
+branch = True
+source = vgridpandas
+omit = 
+    setup.py
+    vgridpandas/_version.py
+
+[report]
+
+[html]
