@@ -3,7 +3,7 @@ from typing import Callable, Iterator
 
 
 def catch_invalid_olc_id(f: Callable) -> Callable:
-    """Wrapper that catches potential invalid ease ID.
+    """Wrapper that catches potential invalid olc ID.
 
     Parameters
     ----------
@@ -12,12 +12,12 @@ def catch_invalid_olc_id(f: Callable) -> Callable:
     Returns
     -------
     The return value of f, or a ValueError if f threw ValueError, TypeError,
-    or QTMCellError
+    or OLCCellError
 
     Raises
     ------
     ValueError
-        When an invalid ease ID is encountered
+        When an invalid OLC ID is encountered
     """
 
     @wraps(f)
@@ -25,7 +25,7 @@ def catch_invalid_olc_id(f: Callable) -> Callable:
         try:
             return f(*args, **kwargs)
         except (TypeError, ValueError) as e:
-            message = "ease method raised an error. Is the ease ID correct?"
+            message = "OLC method raised an error. Is the OLC ID correct?"
             message += f"\nCaller: {f.__name__}({_print_signature(*args, **kwargs)})"
             message += f"\nOriginal error: {repr(e)}"
             raise ValueError(message)
@@ -60,7 +60,7 @@ def sequential_deduplication(func: Iterator[str]) -> Iterator[str]:
 
 # TODO: Test
 def doc_standard(column_name: str, description: str) -> Callable:
-    """Wrapper to provide a standard apply-to-ease-id docstring"""
+    """Wrapper to provide a standard apply-to-olc-id docstring"""
 
     def doc_decorator(f):
         @wraps(f)
@@ -69,7 +69,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
 
         parameters = f.__doc__ or ""
 
-        doc = f"""Adds the column `{column_name}` {description}. Assumes ease ID.
+        doc = f"""Adds the column `{column_name}` {description}. Assumes OLC ID.
         {parameters}
         Returns
         -------
@@ -78,7 +78,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
         Raises
         ------
         ValueError
-            When an invalid ease address is encountered
+            When an invalid OLC ID is encountered
         """
 
         doc_f.__doc__ = doc

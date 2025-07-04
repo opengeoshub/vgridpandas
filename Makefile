@@ -1,4 +1,4 @@
-ENV_NAME := h3-pandas
+ENV_NAME := vgridpandas
 ENVIRONMENT := environment.yml
 ENVIRONMENT_DEV := environment-dev.yml
 

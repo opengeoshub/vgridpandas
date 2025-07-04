@@ -1,5 +1,5 @@
 # VgridPandas
-Integrates [vgrid](https://github.com/opengeoshub/vgrid) with  [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas).
+Integrates [vgrid](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)
 
 <div align="center">
   <img src="docs/assets/vgridpandas.svg" alt="vgridpandas logo">

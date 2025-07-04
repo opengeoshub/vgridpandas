@@ -1,0 +1,9 @@
+{
+"type": "FeatureCollection",
+"name": "maidenhead_2",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "maidenhead_02": "OK30", "lat": 10.775299665325505, "lon": 106.70647975040788 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 106.0, 10.0 ], [ 108.0, 10.0 ], [ 108.0, 11.0 ], [ 106.0, 11.0 ], [ 106.0, 10.0 ] ] ] } },
+{ "type": "Feature", "properties": { "maidenhead_02": "OK30", "lat": 10.78731693, "lon": 107.99626405 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 106.0, 10.0 ], [ 108.0, 10.0 ], [ 108.0, 11.0 ], [ 106.0, 11.0 ], [ 106.0, 10.0 ] ] ] } }
+]
+}

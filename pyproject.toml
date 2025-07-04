@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vgridpandas"
-dynamic = ["version", "readme"]
+readme = "README.md"
+version = "1.0.0"
 description = "Integration of DGGS and GeoPandas"
 license = { file = "LICENSE" }
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
@@ -19,7 +20,6 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov", "ruff"]
-docs = ["sphinx", "numpydoc", "pytest-sphinx-theme", "typing-extensions"]
 
 [project.urls]
 Homepage = "https://github.com/opengeoshub/vgridpandas"
@@ -34,6 +34,9 @@ include = ["vgridpandas*"]
 
 [tool.setuptools.dynamic]
 readme = {file = "README.md", content-type = "text/markdown"}
+
+[tool.setuptools.package-data]
+"vgridpandas.mgrspandas.util" = ["gzd.geojson"]
 
 [tool.codespell]
 skip = "*.ipynb"

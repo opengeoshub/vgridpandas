@@ -3,11 +3,11 @@ from typing import Callable, Iterator
 
 
 def catch_invalid_ease_id(f: Callable) -> Callable:
-    """Wrapper that catches potential invalid ease ID.
+    """Wrapper that catches potential invalid EASE ID.
 
     Parameters
     ----------
-    f : Callable
+    f : Callable    
 
     Returns
     -------
@@ -17,7 +17,7 @@ def catch_invalid_ease_id(f: Callable) -> Callable:
     Raises
     ------
     ValueError
-        When an invalid ease ID is encountered
+        When an invalid EASE ID is encountered
     """
 
     @wraps(f)
@@ -25,7 +25,7 @@ def catch_invalid_ease_id(f: Callable) -> Callable:
         try:
             return f(*args, **kwargs)
         except (TypeError, ValueError) as e:
-            message = "ease method raised an error. Is the ease ID correct?"
+            message = "EASE method raised an error. Is the EASE ID correct?"
             message += f"\nCaller: {f.__name__}({_print_signature(*args, **kwargs)})"
             message += f"\nOriginal error: {repr(e)}"
             raise ValueError(message)

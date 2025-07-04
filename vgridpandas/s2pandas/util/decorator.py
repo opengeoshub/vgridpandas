@@ -12,12 +12,12 @@ def catch_invalid_s2_token(f: Callable) -> Callable:
     Returns
     -------
     The return value of f, or a ValueError if f threw ValueError, TypeError,
-    or s2CellError
+    or S2CellError
 
     Raises
     ------
     ValueError
-        When an invalid s2 Token is encountered
+        When an invalid S2 Token is encountered
     """
 
     @wraps(f)
@@ -25,7 +25,7 @@ def catch_invalid_s2_token(f: Callable) -> Callable:
         try:
             return f(*args, **kwargs)
         except (TypeError, ValueError) as e:
-            message = "s2 method raised an error. Is the S2 Token correct?"
+            message = "S2 method raised an error. Is the S2 Token correct?"
             message += f"\nCaller: {f.__name__}({_print_signature(*args, **kwargs)})"
             message += f"\nOriginal error: {repr(e)}"
             raise ValueError(message)
@@ -78,7 +78,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
         Raises
         ------
         ValueError
-            When an invalid s2 address is encountered
+            When an invalid S2 Token is encountered
         """
 
         doc_f.__doc__ = doc

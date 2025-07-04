@@ -1,4 +1,5 @@
 include README.md
 include LICENSE
-graft h3pandas
+graft vgridpandas
 recursive-include * *.py[co]
+recursive-include vgridpandas/mgrspandas/util *.geojson

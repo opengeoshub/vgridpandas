@@ -25,7 +25,7 @@ def catch_invalid_qtm_id(f: Callable) -> Callable:
         try:
             return f(*args, **kwargs)
         except (TypeError, ValueError) as e:
-            message = "qtm method raised an error. Is the QTM ID correct?"
+            message = "QTM method raised an error. Is the QTM ID correct?"
             message += f"\nCaller: {f.__name__}({_print_signature(*args, **kwargs)})"
             message += f"\nOriginal error: {repr(e)}"
             raise ValueError(message)
@@ -69,7 +69,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
 
         parameters = f.__doc__ or ""
 
-        doc = f"""Adds the column `{column_name}` {description}. Assumes qtm ID.
+        doc = f"""Adds the column `{column_name}` {description}. Assumes QTM ID.
         {parameters}
         Returns
         -------
@@ -78,7 +78,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
         Raises
         ------
         ValueError
-            When an invalid qtm address is encountered
+            When an invalid QTM ID is encountered
         """
 
         doc_f.__doc__ = doc
