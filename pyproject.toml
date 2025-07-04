@@ -11,8 +11,9 @@ authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     "vgrid",  
-    "typing-extensions"
-]
+    "typing-extensions",
+    "matplotlib"
+    ]
 
 [tool.setuptools_scm]
 

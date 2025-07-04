@@ -2,8 +2,8 @@ from functools import wraps
 from typing import Callable, Iterator
 
 
-def catch_invalid_h3_id(f: Callable) -> Callable:
-    """Wrapper that catches potential invalid H3 ID.
+def catch_invalid_olc_id(f: Callable) -> Callable:
+    """Wrapper that catches potential invalid ease ID.
 
     Parameters
     ----------
@@ -12,12 +12,12 @@ def catch_invalid_h3_id(f: Callable) -> Callable:
     Returns
     -------
     The return value of f, or a ValueError if f threw ValueError, TypeError,
-    or H3CellError
+    or QTMCellError
 
     Raises
     ------
     ValueError
-        When an invalid H3 ID is encountered
+        When an invalid ease ID is encountered
     """
 
     @wraps(f)
@@ -25,7 +25,7 @@ def catch_invalid_h3_id(f: Callable) -> Callable:
         try:
             return f(*args, **kwargs)
         except (TypeError, ValueError) as e:
-            message = "H3 method raised an error. Is the H3 ID correct?"
+            message = "ease method raised an error. Is the ease ID correct?"
             message += f"\nCaller: {f.__name__}({_print_signature(*args, **kwargs)})"
             message += f"\nOriginal error: {repr(e)}"
             raise ValueError(message)
@@ -60,7 +60,7 @@ def sequential_deduplication(func: Iterator[str]) -> Iterator[str]:
 
 # TODO: Test
 def doc_standard(column_name: str, description: str) -> Callable:
-    """Wrapper to provide a standard apply-to-H3-id docstring"""
+    """Wrapper to provide a standard apply-to-ease-id docstring"""
 
     def doc_decorator(f):
         @wraps(f)
@@ -69,7 +69,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
 
         parameters = f.__doc__ or ""
 
-        doc = f"""Adds the column `{column_name}` {description}. Assumes H3 ID.
+        doc = f"""Adds the column `{column_name}` {description}. Assumes ease ID.
         {parameters}
         Returns
         -------
@@ -78,7 +78,7 @@ def doc_standard(column_name: str, description: str) -> Callable:
         Raises
         ------
         ValueError
-            When an invalid H3 address is encountered
+            When an invalid ease address is encountered
         """
 
         doc_f.__doc__ = doc

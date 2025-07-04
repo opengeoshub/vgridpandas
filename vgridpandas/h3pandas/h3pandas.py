@@ -12,8 +12,8 @@ import h3
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
-from .const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
-from .util.decorator import catch_invalid_h3_address, doc_standard
+from .util.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
+from .util.decorator import catch_invalid_h3_id, doc_standard
 from .util.functools import wrapped_partial
 from .util.geometry import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
 
@@ -21,7 +21,7 @@ AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
 @pd.api.extensions.register_dataframe_accessor("h3")
-class H3Accessor:
+class H3Pandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
@@ -51,15 +51,15 @@ class H3Accessor:
         lng_col : str
             Name of the longitude column (if used), default 'lon'
         set_index : bool
-            If True, the columns with H3 addresses is set as index, default 'True'
+            If True, the columns with H3 ID is set as index, default 'True'
 
         Returns
         -------
-        (Geo)DataFrame with H3 addresses added
+        (Geo)DataFrame with H3 ID added
 
         See Also
         --------
-        geo_to_h3_aggregate : Extended API method that aggregates points by H3 address
+        geo_to_h3_aggregate : Extended API method that aggregates points by H3 id
 
         Examples
         --------
@@ -84,6 +84,9 @@ class H3Accessor:
         881e2659c3fffff    1  POINT (15.00000 51.00000)
 
         """
+        if not isinstance(resolution, int) or resolution not in range(0, 16):
+            raise ValueError("Resolution must be an integer in range [0, 15]")
+
         if isinstance(self._df, gpd.GeoDataFrame):
             lngs = self._df.geometry.x
             lats = self._df.geometry.y
@@ -91,19 +94,19 @@ class H3Accessor:
             lngs = self._df[lng_col]
             lats = self._df[lat_col]
 
-        h3addresses = [
+        h3_id = [
             h3.latlng_to_cell(lat, lng, resolution) for lat, lng in zip(lats, lngs)
         ]
 
         colname = self._format_resolution(resolution)
-        assign_arg = {colname: h3addresses}
+        assign_arg = {colname: h3_id}
         df = self._df.assign(**assign_arg)
         if set_index:
             return df.set_index(colname)
         return df
 
     def h32latlon(self) -> GeoDataFrame:
-        """Add `geometry` with centroid of each H3 address to the DataFrame.
+        """Add `geometry` with centroid of each H3 id to the DataFrame.
         Assumes H3 index.
 
         Returns
@@ -113,7 +116,7 @@ class H3Accessor:
         Raises
         ------
         ValueError
-            When an invalid H3 address is encountered
+            When an invalid H3 id is encountered
 
         See Also
         --------
@@ -146,7 +149,7 @@ class H3Accessor:
         Raises
         ------
         ValueError
-            When an invalid H3 address is encountered
+            When an invalid H3 id is encountered
 
         Examples
         --------
@@ -163,7 +166,7 @@ class H3Accessor:
             finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
         )
 
-    @doc_standard("h3_resolution", "containing the resolution of each H3 address")
+    @doc_standard("h3_resolution", "containing the resolution of each H3 id")
     def h3_get_resolution(self) -> AnyDataFrame:
         """
         Examples
@@ -177,7 +180,7 @@ class H3Accessor:
         """
         return self._apply_index_assign(h3.get_resolution, "h3_resolution")
 
-    @doc_standard("h3_base_cell", "containing the base cell of each H3 address")
+    @doc_standard("h3_base_cell", "containing the base cell of each H3 id")
     def h3_get_base_cell(self):
         """
         Examples
@@ -191,7 +194,7 @@ class H3Accessor:
         """
         return self._apply_index_assign(h3.get_base_cell_number, "h3_base_cell")
 
-    @doc_standard("h3_is_valid", "containing the validity of each H3 address")
+    @doc_standard("h3_is_valid", "containing the validity of each H3 id")
     def h3_is_valid(self):
         """
         Examples
@@ -205,14 +208,14 @@ class H3Accessor:
         return self._apply_index_assign(h3.is_valid_cell, "h3_is_valid")
 
     @doc_standard(
-        "h3_k_ring", "containing a list H3 addresses within a distance of `k`"
+        "h3_k_ring", "containing a list H3 ID within a distance of `k`"
     )
     def k_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
         """
         Parameters
         ----------
         k : int
-            the distance from the origin H3 address. Default k = 1
+            the distance from the origin H3 id. Default k = 1
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
@@ -257,7 +260,7 @@ class H3Accessor:
 
     @doc_standard(
         "h3_hex_ring",
-        "containing a list H3 addresses forming a hollow hexagonal ring"
+        "containing a list H3 ID forming a hollow hexagonal ring"
         "at a distance `k`",
     )
     def hex_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
@@ -265,7 +268,7 @@ class H3Accessor:
         Parameters
         ----------
         k : int
-            the distance from the origin H3 address. Default k = 1
+            the distance from the origin H3 id. Default k = 1
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
@@ -300,7 +303,7 @@ class H3Accessor:
             return self._apply_index_explode(func, column_name, list)
         return self._apply_index_assign(func, column_name, list)
 
-    @doc_standard("h3_{resolution}", "containing the parent of each H3 address")
+    @doc_standard("h3_{resolution}", "containing the parent of each H3 id")
     def h32parent(self, resolution: int = None) -> AnyDataFrame:
         """
         Parameters
@@ -332,7 +335,7 @@ class H3Accessor:
             wrapped_partial(h3.cell_to_parent, res=resolution), column
         )
 
-    @doc_standard("h3_center_child", "containing the center child of each H3 address")
+    @doc_standard("h3_center_child", "containing the center child of each H3 id")
     def h3_to_center_child(self, resolution: int = None) -> AnyDataFrame:
         """
         Parameters
@@ -356,7 +359,7 @@ class H3Accessor:
 
     @doc_standard(
         COLUMN_H3_POLYFILL,
-        "containing a list H3 addresses whose centroid falls into the Polygon",
+        "containing a list H3 ID whose centroid falls into the Polygon",
     )
     def polyfill(self, resolution: int, explode: bool = False) -> AnyDataFrame:
         """
@@ -406,7 +409,7 @@ class H3Accessor:
 
         return self._df.join(result)
 
-    @doc_standard("h3_cell_area", "containing the area of each H3 address")
+    @doc_standard("h3_cell_area", "containing the area of each H3 id")
     def cell_area(
         self, unit: Literal["km^2", "m^2", "rads^2"] = "km^2"
     ) -> AnyDataFrame:
@@ -462,7 +465,7 @@ class H3Accessor:
 
         Returns
         -------
-        (Geo)DataFrame aggregated by H3 address into which each row's point falls
+        (Geo)DataFrame aggregated by H3 id into which each row's point falls
 
         See Also
         --------
@@ -519,12 +522,12 @@ class H3Accessor:
 
         Returns
         -------
-        (Geo)DataFrame aggregated by the parent of each H3 address
+        (Geo)DataFrame aggregated by the parent of each H3 id
 
         Raises
         ------
         ValueError
-            When an invalid H3 address is encountered
+            When an invalid H3 id is encountered
 
         See Also
         --------
@@ -551,12 +554,12 @@ class H3Accessor:
         h3_01
         811e3ffffffffff    6
         """
-        parent_h3addresses = [
-            catch_invalid_h3_address(h3.cell_to_parent)(h3address, resolution)
-            for h3address in self._df.index
+        parent_h3ID = [
+            catch_invalid_h3_id(h3.cell_to_parent)(h3id, resolution)
+            for h3id in self._df.index
         ]
         h3_parent_column = self._format_resolution(resolution)
-        kwargs_assign = {h3_parent_column: parent_h3addresses}
+        kwargs_assign = {h3_parent_column: parent_h3ID}
         grouped = (
             self._df.assign(**kwargs_assign)
             .groupby(h3_parent_column)[[c for c in self._df.columns if c != "geometry"]]
@@ -586,7 +589,7 @@ class H3Accessor:
         Parameters
         ----------
         k : int
-            The distance from the origin H3 address
+            The distance from the origin H3 id
         weights : Sequence[float]
             Weighting of the values based on the distance from the origin.
             First weight corresponds to the origin.
@@ -817,7 +820,7 @@ class H3Accessor:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each H3 address
+            single-argument function to be applied to each H3 id
         column_name : str
             name of the resulting column
         processor : Callable
@@ -830,8 +833,8 @@ class H3Accessor:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_h3_address(func)
-        result = [processor(func(h3address)) for h3address in self._df.index]
+        func = catch_invalid_h3_id(func)
+        result = [processor(func(h3id)) for h3id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
@@ -849,7 +852,7 @@ class H3Accessor:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each H3 address
+            single-argument function to be applied to each H3 id
         column_name : str
             name of the resulting column
         processor : Callable
@@ -862,10 +865,10 @@ class H3Accessor:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_h3_address(func)
+        func = catch_invalid_h3_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {h3address: processor(func(h3address)) for h3address in self._df.index},
+                {h3id: processor(func(h3id)) for h3id in self._df.index},
                 orient="index",
             )
             .stack()
