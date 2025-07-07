@@ -11,11 +11,13 @@ import geopandas as gpd
 from vgrid.conversion.latlon2dggs import latlon2s2
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
+from collections import Counter
+
 
 from .util.const import COLUMN_S2_POLYFILL 
 from .util.decorator import doc_standard
 from .util.functools import wrapped_partial
-from .util.geometry import cell_to_boundary, polyfill, validate_s2_resolution
+from .util.geometry import cell2boundary, polyfill, validate_s2_resolution
 from .util.decorator import catch_invalid_s2_token
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -25,9 +27,6 @@ AnyDataFrame = Union[DataFrame, GeoDataFrame]
 class S2Pandas:
     def __init__(self, df: DataFrame):
         self._df = df
-
-    # S2 API
-    # These methods simply mirror the Vgrid S2 API and apply S2 functions to all rows
 
     def latlon2s2(
         self,
@@ -95,9 +94,8 @@ class S2Pandas:
         ------
         ValueError
             When an invalid S2 token is encountered
-
-      
         """
+        
         if s2_column is not None:
             # S2 tokens are in the specified column
             if s2_column not in self._df.columns:
@@ -117,23 +115,22 @@ class S2Pandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell_to_boundary(token) for token in tokens]
+                            cell_geometries = [cell2boundary(token) for token in tokens]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single token
-                        geometries.append(cell_to_boundary(tokens))
+                        geometries.append(cell2boundary(tokens))
                 except (ValueError, TypeError):
-                    # Handle cases where pd.isna() fails (e.g., with numpy arrays)
                     if isinstance(tokens, list):
                         if len(tokens) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell_to_boundary(token) for token in tokens]
+                            cell_geometries = [cell2boundary(token) for token in tokens]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single token
                         try:
-                            geometries.append(cell_to_boundary(tokens))
+                            geometries.append(cell2boundary(tokens))
                         except:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -145,7 +142,7 @@ class S2Pandas:
         else:
             # S2 tokens are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell_to_boundary),
+                wrapped_partial(cell2boundary),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -182,6 +179,141 @@ class S2Pandas:
         result = result.explode().to_frame(COLUMN_S2_POLYFILL)
 
         return self._df.join(result)
+
+
+    def s2bin(
+        self,
+        resolution: int,
+        stats: str = "count",
+        numeric_column: str = None,
+        category_column: str = None,
+        lat_col: str = "lat",
+        lon_col: str = "lon",
+        return_geometry: bool = True,
+    ) -> DataFrame:
+        """
+        Bin points into S2 cells and compute statistics, optionally grouped by a category column.
+
+        Parameters
+        ----------
+        resolution : int
+            S2 resolution
+        stats : str
+            Statistic to compute: count, sum, min, max, mean, median, std, var, range, minority, majority, variety
+        numeric_column : str, optional
+            Name of the numeric column to aggregate (for sum, min, max, etc.)
+        category_column : str, optional
+            Name of the category column to group by
+        lat_col : str
+            Name of the latitude column
+        lon_col : str
+            Name of the longitude column
+        return_geometry : bool
+            If True, return a GeoDataFrame with S2 cell geometry
+        """
+        # Add S2 token column
+        colname = self._format_resolution(resolution)
+        df = self.latlon2s2(resolution, lat_col, lon_col, False)
+        
+        if category_column is not None and category_column not in df.columns:
+            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+        if numeric_column is not None and numeric_column not in df.columns:
+            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+
+        group_cols = [colname]
+        if category_column:
+            # Fill NaN values in category column with a placeholder to ensure they're included in grouping
+            df[category_column] = df[category_column].fillna("NaN_category")
+            group_cols.append(category_column)
+
+        # Use pandas built-in aggregation methods for better reliability
+        if stats == "count":
+            result = df.groupby(group_cols).size().reset_index(name=stats)
+        elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
+        elif stats == "range":
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
+            result[stats] = result['max'] - result['min']
+            result = result.drop(['min', 'max'], axis=1)
+        elif stats in ["minority", "majority", "variety"]:
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            def cat_agg_func(x):
+                values = x[numeric_column].dropna()
+                freq = Counter(values)
+                if not freq:
+                    return None
+                if stats == "minority":
+                    return min(freq.items(), key=lambda y: y[1])[0]
+                elif stats == "majority":
+                    return max(freq.items(), key=lambda y: y[1])[0]
+                elif stats == "variety":
+                    return values.nunique()
+            if category_column:
+                all_categories = [str(cat) for cat in df[category_column].unique()]
+                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                # Pivot so each category is a column
+                result = result.pivot(index=colname, columns=category_column, values=stats)
+                # Ensure all categories are present as columns
+                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                result = result.reset_index()
+                # Rename columns to include stat and category
+                result.columns = [colname] + [f"{stats}_{cat}" for cat in all_categories]
+            else:
+                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+        else:
+            raise ValueError(f"Unknown stats: {stats}")
+
+        out_col = stats
+        
+        # Rename the result column to the appropriate name if needed
+        if len(result.columns) > len(group_cols):
+            # The last column is the aggregation result
+            result = result.rename(columns={result.columns[-1]: out_col})
+
+        # If category_column is set, pivot to create separate columns for each category
+        if category_column:
+            # Check if we have any data after aggregation
+            if len(result) == 0:
+                # If no data, create an empty DataFrame with expected structure
+                result = pd.DataFrame(columns=[colname, category_column, out_col])
+            else:
+                # Pivot the table to have categories as columns
+                try:
+                    result = result.pivot(index=colname, columns=category_column, values=out_col)
+                    
+                    # Fill NaN values with 0 for numeric stats, or appropriate default for others
+                    if stats in ["count", "sum", "min", "max", "mean", "median", "std", "var", "range"]:
+                        result = result.fillna(0)
+                    else:
+                        # For categorical stats, fill with None or appropriate default
+                        result = result.fillna(None)
+                    
+                    # Reset index to make S2 cell a regular column
+                    result = result.reset_index()
+                    
+                    # Rename columns to include category prefix if needed
+                    # Keep the S2 column name as is, rename category columns
+                    new_columns = [colname]  # Keep S2 column name
+                    for col in result.columns[1:]:  # Skip the S2 column
+                        if col == "NaN_category":  # Handle NaN category placeholder
+                            new_columns.append(f"{out_col}_NaN")
+                        else:
+                            new_columns.append(f"{out_col}_{col}")
+                    result.columns = new_columns
+                except Exception as e:
+                    # If pivot fails, fall back to simple grouping by S2 cell only
+                    result = df.groupby(colname).size().reset_index(name=out_col)
+
+        # Set S2 cell as index for geometry assignment
+        result = result.set_index(colname)
+        if return_geometry:
+            result = result.s2.s22geo()
+        return result.reset_index() if category_column else result
 
 
     # # Private methods
@@ -254,14 +386,6 @@ class S2Pandas:
         )
         result = self._df.join(result)
         return finalizer(result)
-
-    # # TODO: types, doc, ..
-    # def _multiply_numeric(self, value):
-    #     columns_numeric = self._df.select_dtypes(include=["number"]).columns
-    #     assign_args = {
-    #         column: self._df[column].multiply(value) for column in columns_numeric
-    #     }
-    #     return self._df.assign(**assign_args)
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

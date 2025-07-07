@@ -140,3 +140,6 @@ dmypy.json
 
 private
 .vscode
+*.geojson
+*.geojson
+docs/notebooks/s2_18.geojson

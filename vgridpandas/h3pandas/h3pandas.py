@@ -438,9 +438,9 @@ class H3Pandas:
     def geo2h3_aggregate(
         self,
         resolution: int,
-        operation: Union[dict, str, Callable] = "sum",
+        operation: Union[dict, str, Callable] = "count",
         lat_col: str = "lat",
-        lng_col: str = "lng",
+        lon_col: str = "lon",
         return_geometry: bool = True,
     ) -> DataFrame:
         """Adds H3 index to DataFrame, groups points with the same index
@@ -457,8 +457,8 @@ class H3Pandas:
             Argument passed to DataFrame's `agg` method, default 'sum'
         lat_col : str
             Name of the latitude column (if used), default 'lat'
-        lng_col : str
-            Name of the longitude column (if used), default 'lng'
+        lon_col : str
+            Name of the longitude column (if used), default 'lon'
         return_geometry: bool
             (Optional) Whether to add a `geometry` column with the hexagonal cells.
             Default = True
@@ -494,12 +494,12 @@ class H3Pandas:
         811e3ffffffffff   11
         """
         grouped = pd.DataFrame(
-            self.geo_to_h3(resolution, lat_col, lng_col, False)
-            .drop(columns=[lat_col, lng_col, "geometry"], errors="ignore")
+            self.latlon2h3(resolution, lat_col, lon_col, False)
+            .drop(columns=[lat_col, lon_col, "geometry"], errors="ignore")
             .groupby(self._format_resolution(resolution))
             .agg(operation)
         )
-        return grouped.h3.h3_to_geo_boundary() if return_geometry else grouped
+        return grouped.h3.h32geo() if return_geometry else grouped
 
     def h32parent_aggregate(
         self,
@@ -566,7 +566,7 @@ class H3Pandas:
             .agg(operation)
         )
 
-        return grouped.h3.h3_to_geo_boundary() if return_geometry else grouped
+        return grouped.h3.h32geo() if return_geometry else grouped
 
     # TODO: Needs to allow for handling relative values (e.g. percentage)
     # TODO: Will possibly fail in many cases (what are the existing columns?)

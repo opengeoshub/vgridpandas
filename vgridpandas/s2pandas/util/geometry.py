@@ -16,8 +16,9 @@ from .decorator import sequential_deduplication
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+MultiPointOrPoint = Union[Point, MultiPoint]
 
-def cell_to_boundary(s2_token) -> Polygon:
+def cell2boundary(s2_token) -> Polygon:
     """s2.s2_to_geo_boundary equivalent for shapely"""
     try:
         # If already a CellId, use as is; else, convert from token
@@ -113,7 +114,7 @@ def poly2s2(geometry, resolution, predicate=None, compact=False):
             cell_ids = covering.cell_ids()
 
         for cell_id in cell_ids:
-            cell_polygon = cell_to_boundary(cell_id)
+            cell_polygon = cell2boundary(cell_id)
             if not check_predicate(cell_polygon, poly, predicate):
                 continue
             cell_token = s2.CellId.to_token(cell_id)
@@ -151,5 +152,7 @@ def polyfill(
         return set(poly2s2(geometry, resolution, predicate='intersect', compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
+
+
 
 
