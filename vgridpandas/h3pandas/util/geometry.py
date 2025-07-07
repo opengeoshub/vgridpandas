@@ -21,7 +21,7 @@ def polyfill(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
 
     Returns
     -------
-    Set of H3 addresses
+    Set of H3 IDs
 
     Raises
     ------
@@ -105,7 +105,7 @@ def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
 
     Returns
     -------
-    Set of H3 addresses
+    Set of H3 IDs
 
     Raises
     ------

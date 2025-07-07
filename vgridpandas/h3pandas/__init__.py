@@ -1,1 +1,1 @@
-from .h3pandas import H3Accessor  # noqa: F401
+from .h3pandas import H3Pandas  # noqa: F401

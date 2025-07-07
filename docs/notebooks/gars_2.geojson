@@ -1,9 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "gars_2",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "gars_02": "574JK1", "lat": 10.775299665325505, "lon": 106.70647975040788 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 106.75, 10.75 ], [ 106.75, 11.0 ], [ 106.5, 11.0 ], [ 106.5, 10.75 ], [ 106.75, 10.75 ] ] ] } },
-{ "type": "Feature", "properties": { "gars_02": "576JK2", "lat": 10.78731693, "lon": 107.99626405 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 108.0, 10.75 ], [ 108.0, 11.0 ], [ 107.75, 11.0 ], [ 107.75, 10.75 ], [ 108.0, 10.75 ] ] ] } }
-]
-}
