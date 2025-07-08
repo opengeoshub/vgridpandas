@@ -7,7 +7,6 @@ from vgrid.utils.rhealpixdggs.ellipsoids import WGS84_ELLIPSOID
 from vgrid.utils.antimeridian import fix_polygon
 from vgrid.generator.rhealpixgrid import fix_rhealpix_antimeridian_cells
 
-from .decorator import sequential_deduplication
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]

@@ -1,5 +1,4 @@
-from typing import Union, Set, Iterator
-import pandas as pd
+from typing import Union, Set
 from shapely.geometry import (
     Point,
     MultiPoint,
@@ -8,11 +7,9 @@ from shapely.geometry import (
     LineString,
     MultiLineString,
 )
-from shapely.ops import transform
 from vgrid.utils import s2
 from vgrid.utils.antimeridian import fix_polygon
-from vgridpandas.utils import check_predicate
-from .decorator import sequential_deduplication
+from vgridpandas.utils.geom import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]

@@ -6,7 +6,7 @@ from vgrid.utils.gars import garsgrid
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(gars_id: str) -> Polygon:
+def cell2boundary(gars_id: str) -> Polygon:
     """gars.gars_to_geo_boundary equivalent for shapely
 
     Parameters

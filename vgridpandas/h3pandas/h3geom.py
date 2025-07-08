@@ -2,7 +2,7 @@ from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.ops import transform
 import h3
-from .decorator import sequential_deduplication
+from vgridpandas.utils.decorator import sequential_deduplication
 
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]

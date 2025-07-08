@@ -12,10 +12,10 @@ import h3
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
-from .util.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
-from .util.decorator import catch_invalid_h3_id, doc_standard
-from .util.functools import wrapped_partial
-from .util.geometry import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
+from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
+from vgridpandas.utils.functools import wrapped_partial
+from vgridpandas.h3pandas.h3geometry import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -555,7 +555,7 @@ class H3Pandas:
         811e3ffffffffff    6
         """
         parent_h3ID = [
-            catch_invalid_h3_id(h3.cell_to_parent)(h3id, resolution)
+            catch_invalid_dggs_id(h3.cell_to_parent)(h3id, resolution)
             for h3id in self._df.index
         ]
         h3_parent_column = self._format_resolution(resolution)
@@ -833,7 +833,7 @@ class H3Pandas:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_h3_id(func)
+        func = catch_invalid_dggs_id(func)
         result = [processor(func(h3id)) for h3id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
@@ -865,7 +865,7 @@ class H3Pandas:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_h3_id(func)
+        func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
                 {h3id: processor(func(h3id)) for h3id in self._df.index},

@@ -12,9 +12,9 @@ from vgrid.conversion.latlon2dggs import latlon2maidenhead
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
-from .util.functools import wrapped_partial
-from .util.geometry import cell_to_boundary
-from .util.decorator import catch_invalid_maidenhead_id
+from vgridpandas.utils.functools import wrapped_partial
+from vgridpandas.maidenheadpandas.maidenheadgeometry import cell_to_boundary
+from vgridpandas.utils.decorator import catch_invalid_maidenhead_id
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
