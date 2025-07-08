@@ -25,7 +25,7 @@ requirements:
 build:
   script: |
     {{ PYTHON }} -m pip install . -vv
-    {{ PYTHON }} -m pip install vgrid
+    {{ PYTHON }} -m pip install vgridpandas
 
 test:
   imports:

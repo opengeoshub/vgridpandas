@@ -12,3 +12,12 @@ _update_dev:
 
 _install_package_editable: 
 	mamba run -n $(ENV_NAME) python -m pip install -e .
+
+docs:
+	mamba run -n $(ENV_NAME) python build_docs.py
+
+docs-clean:
+	mamba run -n $(ENV_NAME) mkdocs build --clean
+
+docs-serve:
+	mamba run -n $(ENV_NAME) mkdocs serve

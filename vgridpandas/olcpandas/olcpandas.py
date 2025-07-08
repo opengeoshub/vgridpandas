@@ -12,9 +12,9 @@ from vgrid.conversion.latlon2dggs import latlon2olc
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
-from .util.functools import wrapped_partial
-from .util.geometry import cell_to_boundary
-from .util.decorator import catch_invalid_olc_id
+from vgridpandas.utils.functools import wrapped_partial
+from vgridpandas.olcpandas.olcgeom import cell2boundary
+from vgridpandas.utils.decorator import catch_invalid_dggs_id
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -91,7 +91,7 @@ class OLCPandas:
             When an invalid OLC ID is encountered      
         """        
         return self._apply_index_assign(
-            wrapped_partial(cell_to_boundary),
+            wrapped_partial(cell2boundary),
             "geometry",
             finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
         )
@@ -121,7 +121,7 @@ class OLCPandas:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_olc_id(func)
+        func = catch_invalid_dggs_id(func)
         result = [processor(func(olc_id)) for olc_id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
@@ -153,7 +153,7 @@ class OLCPandas:
         Dataframe with column `column` containing the result of `func`.
         If using `finalizer`, can return anything the `finalizer` returns.
         """
-        func = catch_invalid_olc_id(func)
+        func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
                 {olc_id: processor(func(olc_id)) for olc_id in self._df.index},

@@ -15,7 +15,7 @@ from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.h3pandas.h3geometry import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 

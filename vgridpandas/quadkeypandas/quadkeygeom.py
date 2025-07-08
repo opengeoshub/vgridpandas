@@ -1,7 +1,6 @@
 from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.ops import transform
-from .decorator import sequential_deduplication
 from vgrid.utils import mercantile
 import os, json, re
 from shapely.geometry import shape
@@ -9,7 +8,7 @@ from shapely.geometry import shape
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(quadkey_id: str) -> Polygon:
+def cell2boundary(quadkey_id: str) -> Polygon:
     """quadkey.quadkey_to_geo_boundary equivalent for shapely
 
     Parameters

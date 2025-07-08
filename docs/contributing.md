@@ -7,7 +7,7 @@ little bit helps, and credit will always be given. You can contribute in many wa
 
 ### Report Bugs
 
-Report bugs at <https://github.com/opengeoshub/vgrid/issues>.
+Report bugs at <https://github.com/opengeoshub/vgridpandas/issues>.
 
 If you are reporting a bug, please include:
 
@@ -25,11 +25,11 @@ Look through the GitHub issues for features. Anything tagged with "enhancement" 
 
 ### Write Documentation
 
-vgrid could always use more documentation, whether as part of the official vgrid docs, in docstrings, or even on the web in blog posts, articles, and such.
+vgridpandas could always use more documentation, whether as part of the official vgridpandas docs, in docstrings, or even on the web in blog posts, articles, and such.
 
 ### Submit Feedback
 
-The best way to send feedback is to file an issue at <https://github.com/opengeoshub/vgrid/issues>.
+The best way to send feedback is to file an issue at <https://github.com/opengeoshub/vgridpandas/issues>.
 
 If you are proposing a feature:
 
@@ -41,26 +41,26 @@ If you are proposing a feature:
 
 Ready to contribute? Here's how to set up _vgrid_ for local development.
 
-1. Fork the [vgrid](https://github.com/opengeoshub/vgrid) repo on GitHub.
+1. Fork the [vgridpandas](https://github.com/opengeoshub/vgridpandas) repo on GitHub.
 
 2. Clone your fork locally:
 
     ```
-    git clone git@github.com:your_name_here/vgrid.git
+    git clone git@github.com:your_name_here/vgridpandas.git
     ```
 
 3. Install your local copy into a conda env. Assuming you have conda installed, this is how you set up your fork for local development:
 
     ```
-    conda create -n vgrid-test python
+    conda create -n vgridpandas-test python
     ```
 
     ```
-    conda activate vgrid-test
+    conda activate vgridpandas-test
     ```
 
     ```
-    cd vgrid/
+    cd vgridpandas/
     ```
 
     ```
@@ -78,7 +78,7 @@ Ready to contribute? Here's how to set up _vgrid_ for local development.
 5. When you're done making changes, check that your changes pass flake8 and the tests, including testing other Python versions with tox:
 
     ```
-    flake8 vgrid tests
+    flake8 vgridpandas tests
     ```
 
     ```
@@ -109,7 +109,7 @@ Before you submit a pull request, check that it meets these guidelines:
 
 1. The pull request should include tests.
 2. If the pull request adds functionality, the docs should be updated. Put your new functionality into a function with a docstring, and add the feature to the list in README.rst.
-3. The pull request should work for Python 3.6, 3.7 and 3.8, and for PyPy. Check <https://github.com/opengeoshub/vgrid/actions> and make sure that the tests pass for all supported Python versions.
+3. The pull request should work for Python 3.6, 3.7 and 3.8, and for PyPy. Check <https://github.com/opengeoshub/vgridpandas/actions> and make sure that the tests pass for all supported Python versions.
 
 ## Code of Conduct
 

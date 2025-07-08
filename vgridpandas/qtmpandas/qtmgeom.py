@@ -2,12 +2,11 @@ from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.ops import transform
 from vgrid.utils.qtm import constructGeometry, qtm_id_to_facet
-from .decorator import sequential_deduplication
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(qtm_id: str) -> Polygon:
+def cell2boundary(qtm_id: str) -> Polygon:
     """qtm.qtm_to_geo_boundary equivalent for shapely
 
     Parameters

@@ -1,11 +1,11 @@
-from h3pandas import h3pandas  # noqa: F401
+from vgridpandas import h3pandas  # noqa: F401
 import pytest
 from shapely.geometry import Polygon, LineString, MultiLineString, box, Point
 import pandas as pd
 import geopandas as gpd
 from geopandas.testing import assert_geodataframe_equal
 
-from h3pandas.util.shapely import cell_to_boundary_lng_lat
+from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat
 
 
 # TODO: Make sure methods are tested both for

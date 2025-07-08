@@ -15,30 +15,6 @@ MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 MultiPointOrPoint = Union[Point, MultiPoint]
 
-def cell2boundary(s2_token) -> Polygon:
-    """s2.s2_to_geo_boundary equivalent for shapely"""
-    try:
-        # If already a CellId, use as is; else, convert from token
-        if isinstance(s2_token, s2.CellId):
-            cell_id = s2_token
-        else:
-            cell_id = s2.CellId.from_token(s2_token)
-
-        cell = s2.Cell(cell_id)
-        vertices = [cell.get_vertex(i) for i in range(4)]
-        shapely_vertices = []
-        for vertex in vertices:
-            lat_lng = s2.LatLng.from_point(vertex)
-            longitude = lat_lng.lng().degrees
-            latitude = lat_lng.lat().degrees
-            shapely_vertices.append((longitude, latitude))
-        shapely_vertices.append(shapely_vertices[0])
-        cell_polygon = fix_polygon(Polygon(shapely_vertices))
-        return cell_polygon
-    except Exception as e:
-        print(f"Error converting S2 token to polygon: {e}")
-        return None
-
 def validate_s2_resolution(resolution):
     """
     Validate that S2 resolution is in the valid range [0..28].
@@ -63,6 +39,30 @@ def validate_s2_resolution(resolution):
 
     return resolution
 
+def cell2boundary(s2_token) -> Polygon:
+    """s2.s2_to_geo_boundary equivalent for shapely"""
+    try:
+        # If already a CellId, use as is; else, convert from token
+        if isinstance(s2_token, s2.CellId):
+            cell_id = s2_token
+        else:
+            cell_id = s2.CellId.from_token(s2_token)
+
+        cell = s2.Cell(cell_id)
+        vertices = [cell.get_vertex(i) for i in range(4)]
+        shapely_vertices = []
+        for vertex in vertices:
+            lat_lng = s2.LatLng.from_point(vertex)
+            longitude = lat_lng.lng().degrees
+            latitude = lat_lng.lat().degrees
+            shapely_vertices.append((longitude, latitude))
+        shapely_vertices.append(shapely_vertices[0])
+        cell_polygon = fix_polygon(Polygon(shapely_vertices))
+        return cell_polygon
+    except Exception as e:
+        print(f"Error converting S2 token to polygon: {e}")
+        return None
+
 
 def poly2s2(geometry, resolution, predicate=None, compact=False):
     """
@@ -79,7 +79,7 @@ def poly2s2(geometry, resolution, predicate=None, compact=False):
     Example:
         >>> from shapely.geometry import Polygon
         >>> poly = Polygon([(-122.5, 37.7), (-122.3, 37.7), (-122.3, 37.9), (-122.5, 37.9)])
-        >>> cells = polygon2hs2(10, poly, {"name": "area"}, predicate="intersect")
+        >>> cells = poly2s2(poly, 10, predicate="intersect", compact=True)
         >>> len(cells) > 0
         True
     """
@@ -133,7 +133,7 @@ def polyfill(
     geometry : Polygon or Multipolygon
         Polygon to fill
     resolution : int
-        H3S2 resolution of the filling cells
+        S2 resolution of the filling cells
 
     Returns
     -------
@@ -149,7 +149,4 @@ def polyfill(
         return set(poly2s2(geometry, resolution, predicate='intersect', compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-
-
-
 

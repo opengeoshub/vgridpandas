@@ -2,13 +2,12 @@ from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.wkt import loads
 from shapely.ops import transform
-from .decorator import sequential_deduplication
 from vgrid.utils import geohash
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(geohash_id: str) -> Polygon:
+def cell2boundary(geohash_id: str) -> Polygon:
     """geohash.geohash_to_geo_boundary equivalent for shapely
 
     Parameters

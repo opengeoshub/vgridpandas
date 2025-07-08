@@ -2,7 +2,6 @@ from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.wkt import loads
 from shapely.ops import transform
-from .decorator import sequential_deduplication
 from vgrid.utils import mgrs
 import os, json
 from shapely.geometry import shape
@@ -10,7 +9,7 @@ from shapely.geometry import shape
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(mgrs_id: str) -> Polygon:
+def cell2boundary(mgrs_id: str) -> Polygon:
     """mgrs.mgrs_to_geo_boundary equivalent for shapely
 
     Parameters

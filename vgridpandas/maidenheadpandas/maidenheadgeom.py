@@ -1,12 +1,11 @@
 from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from shapely.ops import transform
 from vgrid.utils import maidenhead
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
-def cell_to_boundary(maidenhead_id: str) -> Polygon:
+def cell2boundary(maidenhead_id: str) -> Polygon:
     """maidenhead.maidenhead_to_geo_boundary equivalent for shapely
 
     Parameters

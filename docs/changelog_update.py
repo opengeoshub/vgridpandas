@@ -3,20 +3,20 @@ import re
 # Copy the release notes from the GitHub release page
 markdown_text = """
 ## What's Changed
-* Add 3d terrain style by @giswqs in https://github.com/opengeoshub/vgrid/pull/1
+* Add 3d terrain style by @giswqs in https://github.com/opengeoshub/vgridpandas/pull/1
 
 
-**Full Changelog**: https://github.com/opengeoshub/vgrid/compare/v1.3.10...v1.0.1
+**Full Changelog**: https://github.com/opengeoshub/vgridpandas/compare/v1.1.1...v1.0.0
 """
 
 # Regular expression pattern to match the Markdown hyperlinks
-pattern = r"https://github\.com/opengeoshub/vgrid/pull/(\d+)"
+pattern = r"https://github\.com/opengeoshub/vgridpandas/pull/(\d+)"
 
 
 # Function to replace matched URLs with the desired format
 def replace_url(match):
     pr_number = match.group(1)
-    return f"[#{pr_number}](https://github.com/opengeoshub/vgrid/pull/{pr_number})"
+    return f"[#{pr_number}](https://github.com/opengeoshub/vgridpandas/pull/{pr_number})"
 
 
 # Use re.sub to replace URLs with the desired format
