@@ -1,6 +1,8 @@
 # VgridPandas
 Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)
 
+Vgridpandas supports popular geodesic DGGS such as H3, S2, rHEALPix, Open-Eaggr ISEA4T, EASE-DGGS, QTM, and graticule DGGS such as OLC, Geohash, MGRS, GEOREF, Tilecode, Quadkey, Maidenhead, GARS
+
 <div align="center">
   <img src="docs/assets/logo.png" alt="vgridpandas logo">
 </div>
@@ -66,39 +68,6 @@ For more examples, see the
 For a full API documentation and more usage examples, see the 
 [documentation](https://vgridpandas.gishub.vn).
 
-
-## Development
-
-### Building Documentation
-
-To build the documentation without warnings, you can use one of the following methods:
-
-#### Using the Python script (recommended):
-```bash
-python build_docs.py
-```
-
-#### Using the Makefile:
-```bash
-make docs
-```
-
-#### Using PowerShell:
-```powershell
-.\build-docs.ps1
-```
-
-#### Using Command Prompt:
-```cmd
-build-docs.bat
-```
-
-These methods automatically suppress the Jupyter deprecation warnings and asyncio runtime warnings that commonly occur on Windows.
-
-### Manual build (if you want to see warnings):
-```bash
-mkdocs build
-```
 
 **Any suggestions and contributions are very welcome**!
 

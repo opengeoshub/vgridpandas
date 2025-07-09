@@ -119,7 +119,7 @@ class EASEPandas:
                         if len(e_ids) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(rhp_id) for rhp_id in e_ids]
+                            cell_geometries = [cell2boundary(e_id) for e_id in e_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single id
@@ -298,7 +298,6 @@ class EASEPandas:
         if return_geometry:
             result = result.ease.ease2geo()
         return result.reset_index()
-
 
     def _apply_index_assign(
         self,

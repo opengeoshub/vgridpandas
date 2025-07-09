@@ -1,11 +1,41 @@
-from typing import Union, Set, Iterator
+from typing import Union, Set
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from shapely.wkt import loads
-from shapely.ops import transform
 from vgrid.utils import geohash
+from vgrid.conversion.dggscompact import geohash_compact
+from vgrid.generator.geohashgrid import (
+    initial_geohashes,
+    geohash_to_polygon,
+    expand_geohash_bbox,
+)
+from vgridpandas.utils.geom import check_predicate
+
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+
+def validate_geohash_resolution(resolution: int) -> int:
+    """
+    Validate that geohash resolution is in the valid range [1..10].
+
+    Args:
+        resolution: Resolution value to validate
+
+    Returns:
+        int: Validated resolution value
+
+    Raises:
+        ValueError: If resolution is not in range [1..10]
+        TypeError: If resolution is not an integer
+    """
+    if not isinstance(resolution, int):
+        raise TypeError(
+            f"Resolution must be an integer, got {type(resolution).__name__}"
+        )
+
+    if resolution < 1 or resolution > 10:
+        raise ValueError(f"Resolution must be in range [1..10], got {resolution}")
+
+    return resolution
 
 def cell2boundary(geohash_id: str) -> Polygon:
     """geohash.geohash_to_geo_boundary equivalent for shapely
@@ -34,62 +64,83 @@ def cell2boundary(geohash_id: str) -> Polygon:
     )
     return cell_polygon
 
-# def polyfill(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
-#     """geohash.polyfill accepting a shapely (Multi)Polygon
+def poly2geohash(
+    geometry: MultiPolyOrPoly,
+    resolution: int,
+    predicate: str = None,
+    compact: bool = False,
+) -> Set[str]:
+    """
+    Convert polygon geometries (Polygon, MultiPolygon) to Geohash grid cells.
 
-#     Parameters
-#     ----------
-#     geometry : Polygon or Multipolygon
-#         Polygon to fill
-#     resolution : int
-#         geohash resolution of the filling cells
+    Args:
+        resolution (int): Geohash resolution level [1..10]
+        geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
+        predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
 
-#     Returns
-#     -------
-#     Set of geohash addresses
+    Returns:
+        list: List of geohash ids intersecting the polygon
 
-#     Raises
-#     ------
-#     TypeError if geometry is not a Polygon or MultiPolygon
-#     """
-#     if isinstance(geometry, (Polygon, MultiPolygon)):
-#         qtmshape = geohash.geo_to_qtmshape(geometry)
-#         return set(geohash.polygon_to_cells(qtmshape, resolution))
-#     else:
-#         raise TypeError(f"Unknown type {type(geometry)}")
+    Example:
+        >>> from shapely.geometry import Polygon
+        >>> poly = Polygon([(-122.5, 37.7), (-122.3, 37.7), (-122.3, 37.9), (-122.5, 37.9)])
+        >>> cells = poly2geohash(poly, 10, predicate="intersect", compact=True)
+        >>> len(cells) > 0
+        True
+    """
 
-# @sequential_deduplication
-# def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
-#     """geohash.polyfill equivalent for shapely (Multi)LineString
-#     Does not represent lines with duplicate sequential cells,
-#     but cells may repeat non-sequentially to represent
-#     self-intersections
+    resolution = validate_geohash_resolution(resolution)
+    geohash_ids = []
+    if isinstance(geometry, (Polygon, LineString)):
+        polys = [geometry]
+    elif isinstance(geometry, (MultiPolygon, MultiLineString)):
+        polys = list(geometry.geoms)
+    else:
+        return []
 
-#     Parameters
-#     ----------
-#     geometry : LineString or MultiLineString
-#         Line to trace with geohash cells
-#     resolution : int
-#         geohash resolution of the tracing cells
+    for poly in polys:
+        intersected_geohashes = {
+            gh for gh in initial_geohashes if geohash_to_polygon(gh).intersects(poly)
+        }
+        geohashes_bbox = set()
+        for gh in intersected_geohashes:
+            expand_geohash_bbox(gh, resolution, geohashes_bbox, poly)
+        for gh in geohashes_bbox:
+            cell_polygon = geohash_to_polygon(gh)
+            if not check_predicate(cell_polygon, poly, predicate):
+                continue
+            geohash_ids.append(gh)
+    if compact:
+        return geohash_compact(geohash_ids)
+    return geohash_ids
 
-#     Returns
-#     -------
-#     Set of geohash addresses
 
-#     Raises
-#     ------
-#     TypeError if geometry is not a LineString or a MultiLineString
-#     """
-#     if isinstance(geometry, MultiLineString):
-#         # Recurse after getting component linestrings from the multiline
-#         for line in map(lambda geom: linetrace(geom, resolution), geometry.geoms):
-#             yield from line
-#     elif isinstance(geometry, LineString):
-#         coords = zip(geometry.coords, geometry.coords[1:])
-#         while (vertex_pair := next(coords, None)) is not None:
-#             i, j = vertex_pair
-#             a = geohash.latlng_to_cell(*i[::-1], resolution)
-#             b = geohash.latlng_to_cell(*j[::-1], resolution)
-#             yield from geohash.grid_path_cells(a, b)  # inclusive of a and b
-#     else:
-#         raise TypeError(f"Unknown type {type(geometry)}")
+def polyfill(
+    geometry: MultiPolyOrPoly,
+    resolution: int,
+    predicate: str = None,
+    compact: bool = False,
+) -> Set[str]:
+    """geohash.polyfill accepting a shapely (Multi)Polygon or (Multi)LineString
+
+    Parameters
+    ----------
+    geometry : Polygon or Multipolygon
+        Polygon to fill
+    resolution : int
+        geohash resolution of the filling cells
+
+    Returns
+    -------
+    Set of geohash ids
+
+    Raises
+    ------
+    TypeError if geometry is not a Polygon or MultiPolygon
+    """
+    if isinstance(geometry, (Polygon, MultiPolygon)):
+        return set(poly2geohash(geometry, resolution, predicate, compact))
+    elif isinstance(geometry, (LineString, MultiLineString)):
+        return set(poly2geohash(geometry, resolution, predicate="intersect", compact=False))
+    else:
+        raise TypeError(f"Unknown type {type(geometry)}")

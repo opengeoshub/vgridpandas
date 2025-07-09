@@ -10,7 +10,11 @@
 [![logo](https://raw.githubusercontent.com/opengeoshub/vgridtools/refs/heads/main/images/vgridpandas.svg)](https://github.com/opengeoshub/vgridtools/blob/main/images/vgridpandas.svg)
 
 
-**Vgrid - DGGS and Cell-based Geocoding Utilities**
+**VgridPands - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)**
+
+Vgridpandas supports popular geodesic DGGS such as H3, S2, rHEALPix, Open-Eaggr ISEA4T, EASE-DGGS, QTM, and graticule DGGS such as OLC, Geohash, MGRS, GEOREF, Tilecode, Quadkey, Maidenhead, GARS
+
+
 
 -   GitHub repo: <https://github.com/opengeoshub/vgridpandas>
 -   Documentation: <https://github.com/opengeoshub/vgridpandas>
@@ -18,9 +22,6 @@
 -   Conda-forge: <https://anaconda.org/conda-forge/vgridpandas>
 -   Free software: [MIT license](https://opensource.org/licenses/MIT)
 
-Join our Discord server 👇
-
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/narP4crb)](https://discord.gg/narP4crb)
 
 ## Introduction
 [![vgridpandas](https://raw.githubusercontent.com/opengeoshub/vgridtools/main/images/readme/dggs.png)](https://github.com/opengeoshub/vgridtools/blob/main/images/readme/dggs.png)
@@ -30,7 +31,7 @@ Join our Discord server 👇
 
 ## Acknowledgments
 
-This doc  is inspired by ([leafmap](https://leafmap.org/)).
+This doc is inspired by ([leafmap](https://leafmap.org/)).
 
 ## Statement of Need
 
@@ -46,7 +47,10 @@ Launch the interactive notebook tutorial for the **vgridpandas** Python package 
 
 ## Key Features
 
-- **DGGS Conversion:** Convert latlon to DGGS, geojson to DGGS, raster to DGGS, CSV to DGGS, compact, expand DGGS.
+- **Latlong to DGGS:** Convert latlon to DGGS ID.
+- **DGGS to geo boundary:** Convert DGGS ID to Geometry.
+- **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert vector (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
+- **DGGS point binning:** Convert point to DGGS, supporting popular statistics such as count, min, max, etc by category.
 
 
 ## Citations
@@ -55,4 +59,4 @@ If you find **vgridpandas** useful in your research, please consider citing the 
 
 ## Demo
 
-[Vgrid Homepage](https://vgridpandas.vn)
+[Vgrid Homepage](https://vgrid.vn)

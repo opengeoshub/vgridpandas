@@ -70,7 +70,7 @@ def cell2boundary(ease_id: str) -> Polygon:
     )
     return cell_polygon
 
-def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
+def poly2ease(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
     """
     Convert polygon geometries (Polygon, MultiPolygon) to ease grid cells.
 
@@ -163,8 +163,8 @@ def polyfill(
     TypeError if geometry is not a Polygon or MultiPolygon
     """
     if isinstance(geometry, (Polygon, MultiPolygon)):
-        return set(poly2rhealpix(geometry, resolution, predicate, compact))
+        return set(poly2ease(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2rhealpix(geometry, resolution, predicate='intersect', compact=False))
+        return set(poly2ease(geometry, resolution, predicate='intersect', compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

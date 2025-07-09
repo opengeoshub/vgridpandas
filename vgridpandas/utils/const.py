@@ -1,6 +1,13 @@
 COLUMN_H3_POLYFILL = "h3_polyfill"
 COLUMN_H3_LINETRACE = "h3_linetrace"
 COLUMN_S2_POLYFILL = "s2_polyfill"
+COLUMN_A5_POLYFILL = "a5_polyfill"
 COLUMN_RHEALPIX_POLYFILL = "rhealpix_polyfill"
 COLUMN_ISEA4T_POLYFILL = "isea4t_polyfill"
 COLUMN_EASE_POLYFILL = "ease_polyfill"
+COLUMN_QTM_POLYFILL = "qtm_polyfill"
+COLUMN_OLC_POLYFILL = "olc_polyfill"
+COLUMN_GEOHASH_POLYFILL = "geohash_polyfill"
+COLUMN_TILECODE_POLYFILL = "tilecode_polyfill"
+COLUMN_QUADKEY_POLYFILL = "quadkey_polyfill"
+

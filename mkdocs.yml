@@ -84,7 +84,7 @@ extra:
 
 nav:
     - Home: index.md
-    - Book: https://book.opengeoshub.vn
+    - Book: https://vgridpandas.opengeoshub.vn
     - Installation: installation.md
     - Get Started: get-started.md
     - Usage: notebooks/00_intro.ipynb
@@ -103,3 +103,11 @@ nav:
           - notebooks/05_isea4t.ipynb
           - notebooks/06_ease.ipynb
           - notebooks/07_qtm.ipynb
+          - notebooks/08_olc.ipynb
+          - notebooks/09_geohash.ipynb
+          - notebooks/10_mgrs.ipynb
+          - notebooks/11_georef.ipynb
+          - notebooks/12_tilecode.ipynb
+          - notebooks/13_quadkey.ipynb
+          - notebooks/14_maidenhead.ipynb  
+          - notebooks/15_gars.ipynb
