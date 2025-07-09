@@ -38,7 +38,7 @@ pip install vgridpandas
 # Prepare data
 >>> import pandas as pd
 >>> from vgridpandas import h3pandas
->>> df = pd.DataFrame({'lat': [50, 51], 'lon': [14, 15]})
+>>> df = pd.DataFrame({'lat': [10, 11], 'lon': [106, 107]})
 ```
 
 ```python
@@ -48,16 +48,16 @@ pip install vgridpandas
 
 | h3_10           |   lat |   lon |
 |:----------------|------:|------:|
-| 8a1e30973807fff |    50 |    14 |
-| 8a1e2659c2c7fff |    51 |    15 |
+| 8a65a212199ffff |    10 |   106 |
+| 8a65b0b68237fff |    11 |    107 |
 
 >>> df = df.h3.h32geo()
 >>> df
 
 | h3_10           |   lat |   lon | geometry        |
 |:----------------|------:|------:|:----------------|
-| 8a1e30973807fff |    50 |    14 | POLYGON ((...)) |
-| 8a1e2659c2c7fff |    51 |    15 | POLYGON ((...)) |
+| 8a65a212199ffff |    10 |    106 | POLYGON ((...)) |
+| 8a65b0b68237fff |    11 |    107 | POLYGON ((...)) |
 ```
 
 ### Further examples
