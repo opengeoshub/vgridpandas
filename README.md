@@ -62,7 +62,7 @@ pip install vgridpandas
 
 ### Further examples
 For more examples, see the 
-[example notebooks](https://nbviewer.jupyter.org/github/opengeoshub/vgridpandas/tree/master/docs/notebooks/).
+[example notebooks](https://nbviewer.jupyter.org/github/opengeoshub/vgridpandas/tree/main/docs/notebooks/).
 
 ## VgridPandas API
 For a full API documentation and more usage examples, see the 
