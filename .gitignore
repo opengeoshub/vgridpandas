@@ -138,8 +138,8 @@ dmypy.json
 
 # End of https://www.toptal.com/developers/gitignore/api/pycharm,python
 
-private
-.vscode
 *.geojson
-*.geojson
-docs/notebooks/s2_18.geojson
+# IDE settings
+.vscode/
+
+docs/changelog_update.py

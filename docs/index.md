@@ -1,62 +1,67 @@
-# Welcome to vgridpandas
+# VgridPandas
+**VgridPands - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)**
 
-[![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/master)
-[![image](https://studiolab.sagemaker.aws/studiolab.svg)](https://studiolab.sagemaker.aws/import/github/opengeoshub/vgridpandas/blob/master/docs/notebooks/00_intro.ipynb)
-[![image](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD)
-[![image](https://img.shields.io/pypi/v/vgridpandas.svg)](https://pypi.python.org/pypi/vgridpandas)
-[![image](https://static.pepy.tech/badge/vgridpandas)](https://pepy.tech/project/vgridpandas)
-[![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+VgridPandas supports a wide range of popular geodesic DGGS including H3, S2, A5, rHEALPix, Open-EAGGR ISEA4T, EASE-DGGS, QTM, as well as graticule-based systems such as OLC, Geohash, MGRS, GEOREF, TileCode, Quadkey, Maidenhead, and GARS.
 
 [![logo](https://raw.githubusercontent.com/opengeoshub/vgridtools/refs/heads/main/images/vgridpandas.svg)](https://github.com/opengeoshub/vgridtools/blob/main/images/vgridpandas.svg)
 
 
-**VgridPands - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)**
-
-Vgridpandas supports popular geodesic DGGS such as H3, S2, A5, rHEALPix, Open-Eaggr ISEA4T, EASE-DGGS, QTM, and graticule DGGS such as OLC, Geohash, MGRS, GEOREF, Tilecode, Quadkey, Maidenhead, GARS
-
-
-
--   GitHub repo: <https://github.com/opengeoshub/vgridpandas>
--   Documentation: <https://github.com/opengeoshub/vgridpandas>
--   PyPI: <https://pypi.org/project/vgridpandas>
--   Conda-forge: <https://anaconda.org/conda-forge/vgridpandas>
--   Free software: [MIT license](https://opensource.org/licenses/MIT)
+[![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/main/notebook/00-intro.ipynb)
+[![image](https://studiolab.sagemaker.aws/studiolab.svg)](https://studiolab.sagemaker.aws/import/github/opengeoshub/vgridpandas/blob/main/docs/notebooks/00_intro.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD?filepath=%2Fnotebook%2F00-intro.ipynb)
+[![PyPI version](https://badge.fury.io/py/vgridpandas.svg)](https://badge.fury.io/py/vgridpandas)
+[![image](https://static.pepy.tech/badge/vgridpandas)](https://pepy.tech/project/vgridpandas)
+[![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 
-## Introduction
-[![vgridpandas](https://raw.githubusercontent.com/opengeoshub/vgridtools/main/images/readme/dggs.png)](https://github.com/opengeoshub/vgridtools/blob/main/images/readme/dggs.png)
-
-
-**vgridpandas** 
-
-## Acknowledgments
-
-This doc is inspired by ([leafmap](https://leafmap.org/)).
-
-## Statement of Need
-
-
-## Usage
-
-Launch the interactive notebook tutorial for the **vgridpandas** Python package with Amazon SageMaker Studio Lab, Microsoft Planetary Computer, Google Colab, or Binder:
-
-[![image](https://studiolab.sagemaker.aws/studiolab.svg)](https://studiolab.sagemaker.aws/import/github/opengeoshub/vgridpandas/blob/master/docs/notebooks/00_intro.ipynb)
-[![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/master)
-[![image](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD)
-
+## Installation
+### pip
+[![image](https://img.shields.io/pypi/v/vgridpandas.svg)](https://pypi.python.org/pypi/vgridpandas)
+```bash
+pip install vgridpandas --upgrade
+```
 
 ## Key Features
 
-- **Latlong to DGGS:** Convert latlon to DGGS ID.
-- **DGGS to geo boundary:** Convert DGGS ID to Geometry.
-- **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert vector (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
-- **DGGS point binning:** Convert point to DGGS, supporting popular statistics such as count, min, max, etc by category.
+- **Latlong to DGGS:** Convert latitude and longitude coordinates into DGGS cell IDs.
+- **DGGS to geo boundary:** Convert DGGS cell IDs into their corresponding geographic boundaries.
+- **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
+- **DGGS point binning:** Aggregate points into DGGS cells, supporting common statistics like count, min, max, and category-based groups.
 
+## Usage examples
 
-## Citations
+### Latlong to DGGS
 
-If you find **vgridpandas** useful in your research, please consider citing the following paper to support my work. Thank you for your support.
+```python
+# Prepare data
+>>> import pandas as pd
+>>> from vgridpandas import h3pandas
+>>> df = pd.DataFrame({'lat': [10, 11], 'lon': [106, 107]})
+```
 
-## Demo
+```python
+>>> resolution = 10
+>>> df = df.h3.latlon2h3(resolution)
+>>> df
 
-[Vgrid Homepage](https://vgrid.vn)
+| h3_10           |   lat |   lon |
+|:----------------|------:|------:|
+| 8a65a212199ffff |    10 |   106 |
+| 8a65b0b68237fff |    11 |   107 |
+```
+
+### DGGS to geo boundary
+```python
+
+>>> df = df.h3.h32geo()
+>>> df
+
+| h3_10           |   lat |   lon | geometry        |
+|:----------------|------:|------:|:----------------|
+| 8a65a212199ffff |    10 |   106 | POLYGON ((...)) |
+| 8a65b0b68237fff |    11 |   107 | POLYGON ((...)) |
+```
+
+### Further examples
+For more examples, see the 
+[example notebooks](https://nbviewer.jupyter.org/github/opengeoshub/vgridpandas/tree/main/docs/notebooks/).

@@ -1,0 +1,3 @@
+# GeohashPandas module
+
+::: vgridpandas.geohashpandas 
