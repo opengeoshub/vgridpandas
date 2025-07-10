@@ -1,1 +1,3 @@
-from .georefpandas import GEOREFPandas  # noqa: F401
+from .georefpandas import GEOREFPandas
+
+__all__ = ["GEOREFPandas"]

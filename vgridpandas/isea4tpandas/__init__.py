@@ -1,1 +1,3 @@
-from .isea4tpandas import ISEA4TPandas  # noqa: F401
+from .isea4tpandas import ISEA4TPandas
+
+__all__ = ["ISEA4TPandas"]

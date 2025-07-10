@@ -1,1 +1,3 @@
-from .garspandas import GARSPandas  # noqa: F401
+from .garspandas import GARSPandas
+
+__all__ = ["GARSPandas"]

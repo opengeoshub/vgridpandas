@@ -1,1 +1,3 @@
-from .rhealpixpandas import rHEALPixPandas  # noqa: F401
+from .rhealpixpandas import rHEALPixPandas
+
+__all__ = ["rHEALPixPandas"]

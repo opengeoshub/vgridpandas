@@ -1,1 +1,3 @@
-from .qtmpandas import QTMPandas  # noqa: F401
+from .qtmpandas import QTMPandas
+
+__all__ = ["QTMPandas"]

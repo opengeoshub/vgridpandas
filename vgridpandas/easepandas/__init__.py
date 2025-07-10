@@ -1,1 +1,3 @@
-from .easepandas import EASEPandas  # noqa: F401
+from .easepandas import EASEPandas
+
+__all__ = ["EASEPandas"]

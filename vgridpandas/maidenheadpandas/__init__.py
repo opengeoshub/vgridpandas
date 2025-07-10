@@ -1,1 +1,3 @@
-from .maidenheadpandas import MaidenheadPandas  # noqa: F401
+from .maidenheadpandas import MaidenheadPandas
+
+__all__ = ["MaidenheadPandas"]

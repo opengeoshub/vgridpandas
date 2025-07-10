@@ -1,1 +1,3 @@
-from .olcpandas import OLCPandas  # noqa: F401
+from .olcpandas import OLCPandas
+
+__all__ = ["OLCPandas"]

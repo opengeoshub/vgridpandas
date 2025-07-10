@@ -1,1 +1,3 @@
-from .tilecodepandas import TilecodePandas  # noqa: F401
+from .tilecodepandas import TilecodePandas
+
+__all__ = ["TilecodePandas"]

@@ -1,1 +1,3 @@
-from .geohashpandas import GeohashPandas  # noqa: F401
+from .geohashpandas import GeohashPandas
+
+__all__ = ["GeohashPandas"]

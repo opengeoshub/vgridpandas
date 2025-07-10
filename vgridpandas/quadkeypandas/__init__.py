@@ -1,1 +1,3 @@
-from .quadkeypandas import QuadkeyPandas  # noqa: F401
+from .quadkeypandas import QuadkeyPandas
+
+__all__ = ["QuadkeyPandas"]

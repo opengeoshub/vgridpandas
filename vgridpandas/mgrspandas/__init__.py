@@ -1,1 +1,3 @@
-from .mgrspandas import MGRSPandas  # noqa: F401
+from .mgrspandas import MGRSPandas
+
+__all__ = ["MGRSPandas"]

@@ -54,13 +54,15 @@ plugins:
     - mkdocs-jupyter:
           include_source: True
           ignore_h1_titles: True
-          execute: True
+          execute: False
           allow_errors: false
           ignore: ["usage.md"]
           execute_ignore:
               [
                   "changelog_update.py",
               ]
+          # Uncomment and modify the line below to execute only specific notebooks
+          # execute_include: ["notebooks/00_intro.ipynb", "notebooks/01_h3.ipynb"]
 
 markdown_extensions:
     - admonition
