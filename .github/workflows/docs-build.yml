@@ -1,9 +1,12 @@
 name: docs-build
 
 on:
+    push:
+       branches:
+         - main
     pull_request:
-        branches:
-            - main
+       branches:
+         - main
 
 permissions:
   contents: read
@@ -54,7 +57,6 @@ jobs:
                   uv run mkdocs build
 
             - name: Deploy to Cloudflare Pages
-              if: github.ref == 'refs/heads/main'
               uses: cloudflare/pages-action@v1
               with:
                   apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -62,7 +64,6 @@ jobs:
                   projectName: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
                   directory: ./site
                   gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
             - name: Cleanup
               if: always()
               run: |
