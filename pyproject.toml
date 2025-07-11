@@ -11,7 +11,8 @@ license = { file = "LICENSE" }
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
-    "vgrid"
+    "vgrid",
+    "fiona"
     ]
 
 [tool.setuptools_scm]
@@ -48,5 +49,5 @@ ignore = ["E203"]
 [tool.ruff.lint.pycodestyle]
 max-line-length = 88
 
-[tool.pytest.ini_options]
-filterwarnings = ["ignore::UserWarning"]
+# [tool.pytest.ini_options]
+# filterwarnings = ["ignore::UserWarning"]

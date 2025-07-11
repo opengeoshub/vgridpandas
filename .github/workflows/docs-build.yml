@@ -5,6 +5,10 @@ on:
         branches:
             - main
 
+permissions:
+  contents: read
+  deployments: write
+
 jobs:
     docs-build:
         runs-on: ubuntu-latest
@@ -33,15 +37,12 @@ jobs:
 
             - name: Install optional dependencies
               run: |
-                  uv pip install --find-links https://girder.github.io/large_image_wheels GDAL pyproj
                   uv pip install pytest
                   uv pip install -r requirements_dev.txt
 
             - name: Test import
               run: |
-                  uv run python -c "import leafmap; print('leafmap import successful')"
-                  uv run python -c "from osgeo import gdal; print('gdal import successful')"
-                  uv run gdalinfo --version
+                  uv run python -c "import vgridpandas; print('vgridpandas import successful')"
 
             - name: Running pytest
               run: |
@@ -53,6 +54,7 @@ jobs:
                   uv run mkdocs build
 
             - name: Deploy to Cloudflare Pages
+              if: github.ref == 'refs/heads/main'
               uses: cloudflare/pages-action@v1
               with:
                   apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

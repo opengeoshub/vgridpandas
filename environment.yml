@@ -3,8 +3,9 @@ channels:
 dependencies:
   # Required
   - python>=3.10
-  - vgrid
   # Notebooks
   - matplotlib
   # Pip
   - pip
+  - pip:
+    - vgridpandas
