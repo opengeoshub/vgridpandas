@@ -54,7 +54,6 @@ jobs:
                   uv run mkdocs build
 
             - name: Deploy to Cloudflare Pages
-              if: github.ref == 'refs/heads/main'
               uses: cloudflare/pages-action@v1
               with:
                   apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
