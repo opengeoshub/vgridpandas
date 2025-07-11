@@ -1,12 +1,9 @@
-from vgridpandas import h3pandas  # noqa: F401
+from vgridpandas import s2pandas  # noqa: F401
 import pytest
 from shapely.geometry import Polygon, LineString, MultiLineString, box, Point
 import pandas as pd
 import geopandas as gpd
 from geopandas.testing import assert_geodataframe_equal
-
-from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat
-
 
 # TODO: Make sure methods are tested both for
 #  DataFrame and GeoDataFrame (where applicable)
@@ -83,68 +80,68 @@ def basic_geodataframe_with_values(basic_geodataframe):
 
 @pytest.fixture
 def indexed_dataframe(basic_dataframe):
-    """DataFrame with lat, lng and resolution 9 H3 index"""
+    """DataFrame with lat, lng and resolution 9 s2 index"""
     return basic_dataframe.assign(
-        h3_09=["891e3097383ffff", "891e2659c2fffff"]
-    ).set_index("h3_09")
+        s2_09=["891e3097383ffff", "891e2659c2fffff"]
+    ).set_index("s2_09")
 
 
 @pytest.fixture
-def h3_dataframe_with_values():
-    """DataFrame with resolution 9 H3 index and values"""
+def s2_dataframe_with_values():
+    """DataFrame with resolution 9 s2 index and values"""
     index = ["891f1d48177ffff", "891f1d48167ffff", "891f1d4810fffff"]
     return pd.DataFrame({"val": [1, 2, 5]}, index=index)
 
 
 @pytest.fixture
-def h3_geodataframe_with_values(h3_dataframe_with_values):
-    """GeoDataFrame with resolution 9 H3 index, values, and Hexagon geometries"""
+def s2_geodataframe_with_values(s2_dataframe_with_values):
+    """GeoDataFrame with resolution 9 s2 index, values, and Hexagon geometries"""
     geometry = [
-        Polygon(cell_to_boundary_lng_lat(h)) for h in h3_dataframe_with_values.index
+        Polygon(cell_to_boundary_lng_lat(h)) for h in s2_dataframe_with_values.index
     ]
     return gpd.GeoDataFrame(
-        h3_dataframe_with_values, geometry=geometry, crs="epsg:4326"
+        s2_dataframe_with_values, geometry=geometry, crs="epsg:4326"
     )
 
 
 @pytest.fixture
-def h3_geodataframe_with_polyline_values(basic_geodataframe_linestring):
+def s2_geodataframe_with_polyline_values(basic_geodataframe_linestring):
     return basic_geodataframe_linestring.assign(val=10)
 
 
-# Tests: H3 API
-# class TestGeoToH3:
-    # def test_geo_to_h3(self, basic_dataframe):
-    #     result = basic_dataframe.h3.latlon2h3(9)
-    #     expected = basic_dataframe.assign(
-    #         h3_09=["891e3097383ffff", "891e2659c2fffff"]
-    #     ).set_index("h3_09")
+# Tests: s2 API
+class TestGeoTos2:
+    def test_geo_to_s2(self, basic_dataframe):
+        result = basic_dataframe.s2.latlon2s2(9)
+        expected = basic_dataframe.assign(
+            s2_09=["470bb4", "470924"]
+        ).set_index("s2_09")
 
-    #     pd.testing.assert_frame_equal(expected, result)
+        pd.testing.assert_frame_equal(expected, result)
 
-    # def test_geo_to_h3_geo(self, basic_geodataframe):
-    #     result = basic_geodataframe.h3.latlon2h3(9)
+    # def test_geo_to_s2_geo(self, basic_geodataframe):
+    #     result = basic_geodataframe.s2.latlon2s2(9)
     #     expected = basic_geodataframe.assign(
-    #         h3_09=["891e3097383ffff", "891e2659c2fffff"]
-    #     ).set_index("h3_09")
+    #         s2_09=["891e3097383ffff", "891e2659c2fffff"]
+    #     ).set_index("s2_09")
 
     #     pd.testing.assert_frame_equal(expected, result)
 
-    # def test_geo_to_h3_polygon(self, basic_geodataframe_polygon):
+    # def test_geo_to_s2_polygon(self, basic_geodataframe_polygon):
     #     with pytest.raises(ValueError):
-    #         basic_geodataframe_polygon.h3.latlon2h3(9)
+    #         basic_geodataframe_polygon.s2.latlon2s2(9)
 
 
-# class TestH3ToGeo:
-#     def test_h3_to_geo(self, indexed_dataframe):
+# class Tests2ToGeo:
+#     def test_s2_to_geo(self, indexed_dataframe):
 #         lats = [50.000551554902586, 51.000121447274736]
 #         lngs = [14.000372151097624, 14.999768926738376]
 #         geometry = gpd.points_from_xy(x=lngs, y=lats, crs="epsg:4326")
 #         expected = gpd.GeoDataFrame(indexed_dataframe, geometry=geometry)
-#         result = indexed_dataframe.h3.h32latlon()
+#         result = indexed_dataframe.s2.s22latlon()
 #         assert_geodataframe_equal(expected, result, check_less_precise=True)
 
-#     def test_h3_to_geo_boundary(self, indexed_dataframe):
+#     def test_s2_to_geo_boundary(self, indexed_dataframe):
 #         h1 = (
 #             (13.997875502962215, 50.00126530465277),
 #             (13.997981974191347, 49.99956539765703),
@@ -165,61 +162,61 @@ def h3_geodataframe_with_polyline_values(basic_geodataframe_linestring):
 #         )
 #         geometry = [Polygon(h1), Polygon(h2)]
 
-#         result = indexed_dataframe.h3.h32geo()
+#         result = indexed_dataframe.s2.s22geo()
 #         expected = gpd.GeoDataFrame(
 #             indexed_dataframe, geometry=geometry, crs="epsg:4326"
 #         )
 #         assert_geodataframe_equal(expected, result, check_less_precise=True)
 
 
-# class TestH3ToGeoBoundary:
-#     def test_h3_to_geo_boundary_wrong_index(self, indexed_dataframe):
+# class Tests2ToGeoBoundary:
+#     def test_s2_to_geo_boundary_wrong_index(self, indexed_dataframe):
 #         indexed_dataframe.index = [str(indexed_dataframe.index[0])] + ["invalid"]
 #         with pytest.raises(ValueError):
-#             indexed_dataframe.h3.h32geo()
+#             indexed_dataframe.s2.s22geo()
 
 
-# class TestH3ToParent:
-#     def test_h3_to_parent_level_1(self, h3_dataframe_with_values):
-#         h3_parent = "811f3ffffffffff"
-#         result = h3_dataframe_with_values.h3.h32parent(1)
-#         expected = h3_dataframe_with_values.assign(h3_01=h3_parent)
-
-#         pd.testing.assert_frame_equal(expected, result)
-
-#     def test_h3_to_direct_parent(self, h3_dataframe_with_values):
-#         h3_parents = ["881f1d4817fffff", "881f1d4817fffff", "881f1d4811fffff"]
-#         result = h3_dataframe_with_values.h3.h32parent()
-#         expected = h3_dataframe_with_values.assign(h3_parent=h3_parents)
+# class Tests2ToParent:
+#     def test_s2_to_parent_level_1(self, s2_dataframe_with_values):
+#         s2_parent = "811f3ffffffffff"
+#         result = s2_dataframe_with_values.s2.s22parent(1)
+#         expected = s2_dataframe_with_values.assign(s2_01=s2_parent)
 
 #         pd.testing.assert_frame_equal(expected, result)
 
-#     def test_h3_to_parent_level_0(self, h3_dataframe_with_values):
-#         h3_parent = "801ffffffffffff"
-#         result = h3_dataframe_with_values.h3.h32parent(0)
-#         expected = h3_dataframe_with_values.assign(h3_00=h3_parent)
+#     def test_s2_to_direct_parent(self, s2_dataframe_with_values):
+#         s2_parents = ["881f1d4817fffff", "881f1d4817fffff", "881f1d4811fffff"]
+#         result = s2_dataframe_with_values.s2.s22parent()
+#         expected = s2_dataframe_with_values.assign(s2_parent=s2_parents)
+
+#         pd.testing.assert_frame_equal(expected, result)
+
+#     def test_s2_to_parent_level_0(self, s2_dataframe_with_values):
+#         s2_parent = "801ffffffffffff"
+#         result = s2_dataframe_with_values.s2.s22parent(0)
+#         expected = s2_dataframe_with_values.assign(s2_00=s2_parent)
 
 #         pd.testing.assert_frame_equal(expected, result)
 
 
-# class TestH3ToCenterChild:
-#     def test_h3_to_center_child(self, indexed_dataframe):
+# class Tests2ToCenterChild:
+#     def test_s2_to_center_child(self, indexed_dataframe):
 #         expected = indexed_dataframe.assign(
-#             h3_center_child=["8a1e30973807fff", "8a1e2659c2c7fff"]
+#             s2_center_child=["8a1e30973807fff", "8a1e2659c2c7fff"]
 #         )
-#         result = indexed_dataframe.h3.h3_to_center_child()
+#         result = indexed_dataframe.s2.s2_to_center_child()
 #         pd.testing.assert_frame_equal(expected, result)
 
 
 # class TestPolyfill:
-#     def test_empty_polyfill(self, h3_geodataframe_with_values):
-#         expected = h3_geodataframe_with_values.assign(
-#             h3_polyfill=[list(), list(), list()]
+#     def test_empty_polyfill(self, s2_geodataframe_with_values):
+#         expected = s2_geodataframe_with_values.assign(
+#             s2_polyfill=[list(), list(), list()]
 #         )
-#         result = h3_geodataframe_with_values.h3.polyfill(1)
+#         result = s2_geodataframe_with_values.s2.polyfill(1)
 #         assert_geodataframe_equal(expected, result)
 
-#     def test_polyfill(self, h3_geodataframe_with_values):
+#     def test_polyfill(self, s2_geodataframe_with_values):
 #         expected_cells = [
 #             {
 #                 "8a1f1d481747fff",
@@ -249,14 +246,14 @@ def h3_geodataframe_with_polyline_values(basic_geodataframe_linestring):
 #                 "8a1f1d4810f7fff",
 #             },
 #         ]
-#         expected = h3_geodataframe_with_values.assign(h3_polyfill=expected_cells)
-#         result = h3_geodataframe_with_values.h3.polyfill(10)
-#         result["h3_polyfill"] = result["h3_polyfill"].apply(
+#         expected = s2_geodataframe_with_values.assign(s2_polyfill=expected_cells)
+#         result = s2_geodataframe_with_values.s2.polyfill(10)
+#         result["s2_polyfill"] = result["s2_polyfill"].apply(
 #             set
 #         )  # Convert to set for testing
 #         assert_geodataframe_equal(expected, result)
 
-#     def test_polyfill_explode(self, h3_geodataframe_with_values):
+#     def test_polyfill_explode(self, s2_geodataframe_with_values):
 #         expected_indices = set().union(
 #             *[
 #                 {
@@ -288,9 +285,9 @@ def h3_geodataframe_with_polyline_values(basic_geodataframe_linestring):
 #                 },
 #             ]
 #         )
-#         result = h3_geodataframe_with_values.h3.polyfill(10, explode=True)
-#         assert len(result) == len(h3_geodataframe_with_values) * 7
-#         assert set(result["h3_polyfill"]) == expected_indices
+#         result = s2_geodataframe_with_values.s2.polyfill(10, explode=True)
+#         assert len(result) == len(s2_geodataframe_with_values) * 7
+#         assert set(result["s2_polyfill"]) == expected_indices
 #         assert not result["val"].isna().any()
 
 #     def test_polyfill_explode_unequal_lengths(self, basic_geodataframe_polygons):
@@ -301,43 +298,43 @@ def h3_geodataframe_with_polyline_values(basic_geodataframe_linestring):
 #             "837541fffffffff",
 #             "83754cfffffffff",
 #         }
-#         result = basic_geodataframe_polygons.h3.polyfill(3, explode=True)
+#         result = basic_geodataframe_polygons.s2.polyfill(3, explode=True)
 #         assert len(result) == 5
-#         assert set(result["h3_polyfill"]) == expected_indices
+#         assert set(result["s2_polyfill"]) == expected_indices
 
 
 # class TestCellArea:
 #     def test_cell_area(self, indexed_dataframe):
 #         expected = indexed_dataframe.assign(
-#             h3_cell_area=[0.09937867173389912, 0.09775508251476996]
+#             s2_cell_area=[0.09937867173389912, 0.09775508251476996]
 #         )
-#         result = indexed_dataframe.h3.cell_area()
+#         result = indexed_dataframe.s2.cell_area()
 #         pd.testing.assert_frame_equal(expected, result)
 
 
-# class TestH3GetResolution:
-#     def test_h3_get_resolution(self, h3_dataframe_with_values):
-#         expected = h3_dataframe_with_values.assign(h3_resolution=9)
-#         result = h3_dataframe_with_values.h3.h3_get_resolution()
+# class Tests2GetResolution:
+#     def test_s2_get_resolution(self, s2_dataframe_with_values):
+#         expected = s2_dataframe_with_values.assign(s2_resolution=9)
+#         result = s2_dataframe_with_values.s2.s2_get_resolution()
 #         pd.testing.assert_frame_equal(expected, result)
 
-#     def test_h3_get_resolution_index_only(self, h3_dataframe_with_values):
-#         del h3_dataframe_with_values["val"]
-#         expected = h3_dataframe_with_values.assign(h3_resolution=9)
-#         result = h3_dataframe_with_values.h3.h3_get_resolution()
-#         pd.testing.assert_frame_equal(expected, result)
-
-
-# class TestH3GetBaseCell:
-#     def test_h3_get_base_cell(self, indexed_dataframe):
-#         expected = indexed_dataframe.assign(h3_base_cell=[15, 15])
-#         result = indexed_dataframe.h3.h3_get_base_cell()
+#     def test_s2_get_resolution_index_only(self, s2_dataframe_with_values):
+#         del s2_dataframe_with_values["val"]
+#         expected = s2_dataframe_with_values.assign(s2_resolution=9)
+#         result = s2_dataframe_with_values.s2.s2_get_resolution()
 #         pd.testing.assert_frame_equal(expected, result)
 
 
-# class TestH3IsValid:
-#     def test_h3_is_valid(self, indexed_dataframe):
+# class Tests2GetBaseCell:
+#     def test_s2_get_base_cell(self, indexed_dataframe):
+#         expected = indexed_dataframe.assign(s2_base_cell=[15, 15])
+#         result = indexed_dataframe.s2.s2_get_base_cell()
+#         pd.testing.assert_frame_equal(expected, result)
+
+
+# class Tests2IsValid:
+#     def test_s2_is_valid(self, indexed_dataframe):
 #         indexed_dataframe.index = [str(indexed_dataframe.index[0])] + ["invalid"]
-#         expected = indexed_dataframe.assign(h3_is_valid=[True, False])
-#         result = indexed_dataframe.h3.h3_is_valid()
+#         expected = indexed_dataframe.assign(s2_is_valid=[True, False])
+#         result = indexed_dataframe.s2.s2_is_valid()
 #         pd.testing.assert_frame_equal(expected, result)
