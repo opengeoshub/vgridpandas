@@ -44,7 +44,7 @@ pip install vgridpandas --upgrade
 >>> df = df.h3.latlon2h3(resolution)
 >>> df
 
-| h3_10           |   lat |   lon |
+| h3           |   lat |   lon |
 |:----------------|------:|------:|
 | 8a65a212199ffff |    10 |   106 |
 | 8a65b0b68237fff |    11 |   107 |
@@ -56,7 +56,7 @@ pip install vgridpandas --upgrade
 >>> df = df.h3.h32geo()
 >>> df
 
-| h3_10           |   lat |   lon | geometry        |
+| h3           |   lat |   lon | geometry        |
 |:----------------|------:|------:|:----------------|
 | 8a65a212199ffff |    10 |   106 | POLYGON ((...)) |
 | 8a65b0b68237fff |    11 |   107 | POLYGON ((...)) |

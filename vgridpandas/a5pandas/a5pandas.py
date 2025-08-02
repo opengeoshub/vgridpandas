@@ -1,39 +1,35 @@
-from typing import Union, Callable, Any
+""" A5Pandas module for A5 cell operations on pandas DataFrames and GeoDataFrames."""
+
 from collections import Counter
+from typing import Union, Any, Callable
+from shapely.geometry import MultiPolygon, Polygon
 import pandas as pd
 import geopandas as gpd
-from shapely.geometry import Polygon, MultiPolygon
-
-from vgrid.conversion.latlon2dggs import latlon2quadkey
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-
+from vgrid.conversion.latlon2dggs import latlon2a5 as latlon_to_a5
+from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.quadkeypandas.quadkeygeom import polyfill
-from vgrid.utils.io import validate_quadkey_resolution
-from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo
-from vgridpandas.utils.decorator import catch_invalid_dggs_id
-from vgridpandas.utils.const import COLUMN_QUADKEY_POLYFILL
+from vgridpandas.a5pandas.a5geom import polyfill, validate_a5_resolution
+from vgrid.conversion.dggs2geo.a52geo import a52geo as a5_to_geo
+from vgridpandas.utils.const import COLUMN_A5_POLYFILL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
-@pd.api.extensions.register_dataframe_accessor("quadkey")
-class QuadkeyPandas:
+@pd.api.extensions.register_dataframe_accessor("a5")
+class A5Pandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
-    # quadkey API
-    # These methods simply mirror the Vgrid quadkey API and apply quadkey functions to all rows
-
-    def latlon2quadkey(
+    def latlon2a5(
         self,
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
         set_index: bool = True,
     ) -> AnyDataFrame:
-        """Adds quadkey ID to (Geo)DataFrame.
+        """Adds A5 hex to (Geo)DataFrame.
 
         pd.DataFrame: uses `lat_col` and `lon_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
@@ -43,20 +39,20 @@ class QuadkeyPandas:
         Parameters
         ----------
         resolution : int
-            quadkey resolution
+            A5 resolution
         lat_col : str
             Name of the latitude column (if used), default 'lat'
         lon_col : str
             Name of the longitude column (if used), default 'lon'
         set_index : bool
-            If True, the columns with quadkey ID is set as index, default 'True'
+            If True, the columns with A5 hex is set as index, default 'True'
 
         Returns
         -------
-        (Geo)DataFrame with quadkey IDs added     
-        """
+        (Geo)DataFrame with A5 IDs added       
 
-        resolution = validate_quadkey_resolution(resolution)
+        """
+        resolution = validate_a5_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -65,71 +61,71 @@ class QuadkeyPandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        quadkey_ids = [
-            latlon2quadkey(lat, lon, resolution) for lat, lon in zip(lats, lons)
+        a5_hexes = [
+            latlon_to_a5(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # tilecode_column = self._format_resolution(resolution)
-        tilecode_column = "quadkey"
-        assign_arg = {tilecode_column: quadkey_ids, "quadkey_res": resolution}
+        # colname = self._format_resolution(resolution)
+        a5_column = "a5"
+        assign_arg = {a5_column: a5_hexes, "a5_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(tilecode_column)
+            return df.set_index(a5_column)
         return df
 
-    def quadkey2geo(self, quadkey_column: str = None) -> GeoDataFrame:
-        """Add geometry with Quadkey geometry to the DataFrame. Assumes Quadkey ID.
+    def a52geo(self, a5_column: str = None) -> GeoDataFrame:
+        """Add geometry with A5 geometry to the DataFrame. Assumes A5 hex.
 
         Parameters
         ----------
-        quadkey_column : str, optional
-            Name of the column containing Quadkey. If None, assumes quadkey quadkey_ids are in the index.
+        a5_column : str, optional
+            Name of the column containing A5 hexes. If None, assumes A5 hexes are in the index.
 
         Returns
         -------
-        GeoDataFrame with Quadkey geometry
+        GeoDataFrame with A5 geometry
 
         Raises
         ------
         ValueError
-            When an invalid Quadkey ID is encountered
+            When an invalid A5 hex is encountered
         """
 
-        if quadkey_column is not None:
-            # quadkey quadkey_ids are in the specified column
-            if quadkey_column not in self._df.columns:
-                raise ValueError(f"Column '{quadkey_column}' not found in DataFrame")
-            quadkey_ids = self._df[quadkey_column]
+        if a5_column is not None:
+            # A5 hexes are in the specified column
+            if a5_column not in self._df.columns:
+                raise ValueError(f"Column '{a5_column}' not found in DataFrame")
+            a5_hexes = self._df[a5_column]
 
-            # Handle both single 1_ids and lists of 1_ids
+            # Handle both single hexes and lists of hexes
             geometries = []
-            for tc_ids in quadkey_ids:
+            for hexes in a5_hexes:
                 try:
-                    if pd.isna(tc_ids):
+                    if pd.isna(hexes):
                         # Handle NaN values - create empty geometry
                         geometries.append(Polygon())
-                    elif isinstance(tc_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(tc_ids) == 0:
+                    elif isinstance(hexes, list):
+                        # Handle list of hexes - create a MultiPolygon
+                        if len(hexes) == 0:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
+                            cell_geometries = [a5_to_geo(hex) for hex in hexes]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
-                        # Handle single id
-                        geometries.append(quadkey_to_geo(tc_ids))
+                        # Handle single hex
+                        geometries.append(a5_to_geo(hexes))
                 except (ValueError, TypeError):
-                    if isinstance(tc_ids, list):
-                        if len(tc_ids) == 0:
+                    if isinstance(hexes, list):
+                        if len(hexes) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
+                            cell_geometries = [a5_to_geo(hex) for hex in hexes]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
-                        # Try to handle as single id
+                        # Try to handle as single hex
                         try:
-                            geometries.append(quadkey_to_geo(tc_ids))
+                            geometries.append(a5_to_geo(hexes))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -139,44 +135,47 @@ class QuadkeyPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Quadkey IDs are in the index
+            # A5 hexes are in the index
             return self._apply_index_assign(
-                wrapped_partial(quadkey_to_geo),
+                wrapped_partial(a5_to_geo),    
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
 
+    @doc_standard(
+        "a5",
+        "containing a list A5 ID whose centroid falls into the Polygon",
+    )
     def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
         """
         Parameters
         ----------
         resolution : int
-            Quadkey resolution
+            A5 resolution
         predicate : str, optional
             Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
         compact : bool, optional
-            Whether to compact the Quadkey IDs
+            Whether to compact the A5 hexes
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
             Default: False       
         """
-        resolution = validate_quadkey_resolution(resolution)
+
         def func(row):
             return list(polyfill(row.geometry, resolution, predicate, compact))
 
         result = self._df.apply(func, axis=1)
 
         if not explode:
-            assign_args = {COLUMN_QUADKEY_POLYFILL: result}
+            assign_args = {"a5": result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_QUADKEY_POLYFILL)
+        result = result.explode().to_frame("a5")
 
         return self._df.join(result)
 
-
-    def quadkeybin(
+    def a5bin(
         self,
         resolution: int,
         stats: str = "count",
@@ -187,14 +186,14 @@ class QuadkeyPandas:
         return_geometry: bool = True,
     ) -> DataFrame:
         """
-        Bin points into quadkey cells and compute statistics, optionally grouped by a category column.
+        Bin points into A5 cells and compute statistics, optionally grouped by a category column.
 
         Supports both GeoDataFrame (with point geometry) and DataFrame (with lat/lon columns).
 
         Parameters
         ----------
         resolution : int
-            quadkey resolution
+            A5 resolution
         stats : str
             Statistic to compute: count, sum, min, max, mean, median, std, var, range, minority, majority, variety
         numeric_column : str, optional
@@ -206,12 +205,12 @@ class QuadkeyPandas:
         lon_col : str, optional
             Name of the longitude column (only used for DataFrame input, ignored for GeoDataFrame)
         return_geometry : bool
-            If True, return a GeoDataFrame with quadkey cell geometry
+            If True, return a GeoDataFrame with A5 cell geometry
         """
         # Validate inputs and prepare data
-        # tilecode_column = self._format_resolution(resolution)
-        tilecode_column = "quadkey"
-        df = self.latlon2quadkey(resolution, lat_col, lon_col, False)
+        # colname = self._format_resolution(resolution)
+        colname = "a5"
+        df = self.latlon2a5(resolution, lat_col, lon_col, False)
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
@@ -220,7 +219,7 @@ class QuadkeyPandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [tilecode_column]
+        group_cols = [colname]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -261,14 +260,14 @@ class QuadkeyPandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([tilecode_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
+                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=colname, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [tilecode_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([tilecode_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -279,16 +278,16 @@ class QuadkeyPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[tilecode_column, category_column, stats])
+                result = pd.DataFrame(columns=[colname, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
+                    result = result.pivot(index=colname, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [tilecode_column]
+                    new_columns = [colname]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -297,15 +296,15 @@ class QuadkeyPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(tilecode_column).size().reset_index(name=stats)
+                    result = df.groupby(colname).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(tilecode_column)
+        result = result.set_index(colname)
         if return_geometry:
-            result = result.quadkey.quadkey2geo()
+            result = result.a5.a52geo()
         return result.reset_index()
-        
 
+    # # Private methods
     def _apply_index_assign(
         self,
         func: Callable,
@@ -318,7 +317,7 @@ class QuadkeyPandas:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each S2 Token
+            single-argument function to be applied to each A5 Token
         column_name : str
             name of the resulting column
         processor : Callable
@@ -332,7 +331,7 @@ class QuadkeyPandas:
         If using `finalizer`, can return anything the `finalizer` returns.
         """
         func = catch_invalid_dggs_id(func)
-        result = [processor(func(quadkey_id)) for quadkey_id in self._df.index]
+        result = [processor(func(a5hex)) for a5hex in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
@@ -350,7 +349,7 @@ class QuadkeyPandas:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each S2 Token
+            single-argument function to be applied to each A5 Token
         column_name : str
             name of the resulting column
         processor : Callable
@@ -366,7 +365,7 @@ class QuadkeyPandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {quadkey_id: processor(func(quadkey_id)) for quadkey_id in self._df.index},
+                {h3address: processor(func(h3address)) for h3address in self._df.index},
                 orient="index",
             )
             .stack()
@@ -378,4 +377,5 @@ class QuadkeyPandas:
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:
-        return f"quadkey_{str(resolution).zfill(2)}"
+        return f"a5_{str(resolution).zfill(2)}"
+       

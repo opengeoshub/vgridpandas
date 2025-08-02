@@ -64,11 +64,12 @@ class ISEA4TPandas:
             latlon2dggs.latlon2isea4t(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: isea4t_ids}
+        # isea4t_column = self._format_resolution(resolution)
+        isea4t_column = "isea4t"
+        assign_arg = {isea4t_column: isea4t_ids, "isea4t_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(isea4t_column)
         return df
 
 
@@ -208,7 +209,8 @@ class ISEA4TPandas:
             If True, return a GeoDataFrame with isea4t cell geometry
         """
         # Validate inputs and prepare data
-        colname = self._format_resolution(resolution)
+        # isea4t_column = self._format_resolution(resolution)
+        isea4t_column = "isea4t"
         df = self.latlon2isea4t(resolution, lat_col, lon_col, False)
 
         # Validate column existence
@@ -218,7 +220,7 @@ class ISEA4TPandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [colname]
+        group_cols = [isea4t_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -259,14 +261,14 @@ class ISEA4TPandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=colname, columns=category_column, values=stats)
+                result = df.groupby([isea4t_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=isea4t_column, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [isea4t_column] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([isea4t_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -277,16 +279,16 @@ class ISEA4TPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[colname, category_column, stats])
+                result = pd.DataFrame(columns=[isea4t_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=colname, columns=category_column, values=stats)
+                    result = result.pivot(index=isea4t_column, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [colname]
+                    new_columns = [isea4t_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -295,10 +297,10 @@ class ISEA4TPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(colname).size().reset_index(name=stats)
+                    result = df.groupby(isea4t_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(colname)
+        result = result.set_index(isea4t_column)
         if return_geometry:
             result = result.isea4t.isea4t2geo()
         return result.reset_index()

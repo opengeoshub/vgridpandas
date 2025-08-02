@@ -3,7 +3,7 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.ops import transform
 import h3
 from vgridpandas.utils.decorator import sequential_deduplication
-
+from vgrid.utils.geometry import fix_h3_antimeridian_cells      
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
@@ -34,29 +34,6 @@ def polyfill(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
         raise TypeError(f"Unknown type {type(geometry)}")
 
 
-def fix_h3_antimeridian(h3_boundary, threshold=-128):
-    """
-    Adjusts H3 boundaries crossing the antimeridian for correct longitude values.
-
-    Parameters
-    ----------
-    h3_boundary : list of tuple
-        List of (lat, lon) tuples representing the H3 cell boundary.
-    threshold : float, optional
-        Longitude threshold to detect antimeridian crossing (default: -128).
-
-    Returns
-    -------
-    list of tuple
-        Adjusted list of (lat, lon) tuples.
-    """
-    
-    if any(lon < threshold for _, lon in h3_boundary):
-        # Adjust all longitudes accordingly
-        return [(lat, lon - 360 if lon > 0 else lon) for lat, lon in h3_boundary]
-    return h3_boundary
-
-
 def cell_to_boundary_lng_lat(h3_id: str) -> Polygon:
     """h3.h3_to_geo_boundary equivalent for shapely
 
@@ -70,7 +47,7 @@ def cell_to_boundary_lng_lat(h3_id: str) -> Polygon:
     Polygon representing the H3 cell boundary
     """
     boundary = h3.cell_to_boundary(h3_id)
-    fixed_boundary = fix_h3_antimeridian(boundary)
+    fixed_boundary = fix_h3_antimeridian_cells(boundary)
     return _switch_lat_lng(Polygon(fixed_boundary))
 
 

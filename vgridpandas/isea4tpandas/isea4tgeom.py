@@ -1,51 +1,23 @@
-from typing import Union, Set, Iterator
+from typing import Union, Set
 from shapely.geometry import box, Polygon, MultiPolygon, LineString, MultiLineString
 from shapely.wkt import loads
 import platform
-from vgrid.conversion.dggscompact import isea4t_compact
+from vgrid.conversion.dggscompact.isea4tcompact import isea4t_compact
 from vgridpandas.utils.geom import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
 if platform.system() == "Windows":
-    from vgrid.utils.eaggr.enums.shape_string_format import ShapeStringFormat
-    from vgrid.utils.eaggr.eaggr import Eaggr
-    from vgrid.utils.eaggr.shapes.dggs_cell import DggsCell
-    from vgrid.utils.eaggr.enums.model import Model
-    from vgrid.generator.isea4tgrid import (
-        isea4t_cell_to_polygon,
-        isea4t_res_accuracy_dict,
-        fix_isea4t_antimeridian_cells,
-        get_isea4t_children_cells_within_bbox,
-    )
-    from vgrid.generator.isea4tgrid import fix_isea4t_wkt,fix_isea4t_antimeridian_cells
+    from vgrid.dggs.eaggr.enums.shape_string_format import ShapeStringFormat
+    from vgrid.dggs.eaggr.eaggr import Eaggr
+    from vgrid.dggs.eaggr.shapes.dggs_cell import DggsCell
+    from vgrid.dggs.eaggr.enums.model import Model
+    from vgrid.generator.isea4tgrid import get_isea4t_children_cells_within_bbox
+    from vgrid.utils.geometry import   isea4t_cell_to_polygon, fix_isea4t_antimeridian_cells, fix_isea4t_wkt
+    from vgrid.utils.io import validate_isea4t_resolution
+    from vgrid.generator.settings import ISEA4T_RES_ACCURACY_DICT
     isea4t_dggs = Eaggr(Model.ISEA4T)
-
-
-def validate_isea4t_resolution(resolution):
-    """
-    Validate that ISEA4T resolution is in the valid range [0..27].
-
-    Args:
-        resolution: Resolution value to validate
-
-    Returns:
-        int: Validated resolution value
-
-    Raises:
-        ValueError: If resolution is not in range [0..27]
-        TypeError: If resolution is not an integer
-    """
-    if not isinstance(resolution, int):
-        raise TypeError(
-            f"Resolution must be an integer, got {type(resolution).__name__}"
-        )
-
-    if resolution < 0 or resolution > 27:
-        raise ValueError(f"Resolution must be in range [0..27], got {resolution}")
-
-    return resolution
 
 
 def cell2boundary(isea4t_id: str) -> Polygon:
@@ -111,7 +83,7 @@ def poly2isea4t(geometry: MultiPolyOrPoly, resolution: int, predicate: str = Non
             return []
 
         for poly in polys:
-            accuracy = isea4t_res_accuracy_dict.get(resolution)
+            accuracy = ISEA4T_RES_ACCURACY_DICT.get(resolution)
             bounding_box = box(*poly.bounds)
             bounding_box_wkt = bounding_box.wkt
             shapes = isea4t_dggs.convert_shape_string_to_dggs_shapes(
@@ -121,13 +93,13 @@ def poly2isea4t(geometry: MultiPolyOrPoly, resolution: int, predicate: str = Non
             bbox_cells = shape.get_shape().get_outer_ring().get_cells()
             bounding_cell = isea4t_dggs.get_bounding_dggs_cell(bbox_cells)
             bounding_child_cells = get_isea4t_children_cells_within_bbox(
-                isea4t_dggs, bounding_cell.get_cell_id(), bounding_box, resolution
+                bounding_cell.get_cell_id(), bounding_box, resolution
             )
             if compact:
-                bounding_child_cells = isea4t_compact(isea4t_dggs, bounding_child_cells)
+                bounding_child_cells = isea4t_compact(bounding_child_cells)
             for child in bounding_child_cells:
                 isea4t_cell = DggsCell(child)
-                cell_polygon = isea4t_cell_to_polygon(isea4t_dggs, isea4t_cell)
+                cell_polygon = isea4t_cell_to_polygon(isea4t_cell)
                 isea4t_id = isea4t_cell.get_cell_id()
                 if isea4t_id.startswith(("00", "09", "14", "04", "19")):
                     cell_polygon = fix_isea4t_antimeridian_cells(cell_polygon)

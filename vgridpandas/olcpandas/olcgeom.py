@@ -1,69 +1,13 @@
 from typing import Union, Set
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.generator.olcgrid import generate_grid, refine_cell
-from vgrid.utils import olc
-from vgrid.conversion.dggscompact import olc_compact
+from vgrid.dggs import olc
+from vgrid.utils.io import validate_olc_resolution
+from vgrid.conversion.dggscompact.olccompact import olc_compact
 from vgridpandas.utils.geom import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
-
-
-def validate_olc_resolution(resolution):
-    """
-    Validate that OLC resolution is in the valid range [2,4,6,8,10,11,12,13,14,15].
-
-    Args:
-        resolution: Resolution value to validate
-
-    Returns:
-        int: Validated resolution value
-
-    Raises:
-        ValueError: If resolution is not in range [2,4,6,8,10,11,12,13,14,15]
-        TypeError: If resolution is not an integer
-    """
-    if not isinstance(resolution, int):
-        raise TypeError(
-            f"Resolution must be an integer, got {type(resolution).__name__}"
-        )
-
-    if resolution not in [2, 4, 6, 8, 10, 11, 12, 13, 14, 15]:
-        raise ValueError(
-            f"Resolution must be in range [2,4,6,8,10,11,12,13,14,15], got {resolution}"
-        )
-
-    return resolution
-
-
-def cell2boundary(olc_id: str) -> Polygon:
-    """olc.olc_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    olc_id : str
-        OLC ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the olc cell boundary
-    """
-    # Base octahedral face definitions
-    coord = olc.decode(olc_id)
-    # Create the bounding box coordinates for the polygon
-    min_lat, min_lon = coord.latitudeLo, coord.longitudeLo
-    max_lat, max_lon = coord.latitudeHi, coord.longitudeHi
-    # Define the polygon based on the bounding box
-    cell_polygon = Polygon(
-        [
-            [min_lon, min_lat],  # Bottom-left corner
-            [max_lon, min_lat],  # Bottom-right corner
-            [max_lon, max_lat],  # Top-right corner
-            [min_lon, max_lat],  # Top-left corner
-            [min_lon, min_lat],  # Closing the polygon (same as the first point)
-        ]
-    )
-    return cell_polygon
 
 
 def poly2olc(
@@ -102,15 +46,15 @@ def poly2olc(
 
     for poly in polys:
         base_resolution = 2
-        base_cells = generate_grid(base_resolution)
+        base_cells_gdf = generate_grid(base_resolution,verbose=False)
         seed_cells = []
-        for base_cell in base_cells["features"]:
-            base_cell_poly = Polygon(base_cell["geometry"]["coordinates"][0])
+        for idx, base_cell in base_cells_gdf.iterrows():
+            base_cell_poly = base_cell["geometry"]
             if poly.intersects(base_cell_poly):
                 seed_cells.append(base_cell)
         refined_features = []
         for seed_cell in seed_cells:
-            seed_cell_poly = Polygon(seed_cell["geometry"]["coordinates"][0])
+            seed_cell_poly = seed_cell["geometry"]
             if seed_cell_poly.contains(poly) and resolution == base_resolution:
                 refined_features.append(seed_cell)
             else:
@@ -122,13 +66,13 @@ def poly2olc(
         resolution_features = [
             refined_feature
             for refined_feature in refined_features
-            if refined_feature["properties"]["resolution"] == resolution
+            if refined_feature["resolution"] == resolution
         ]
         seen_olc_ids = set()
         for resolution_feature in resolution_features:
-            olc_id = resolution_feature["properties"]["olc"]
+            olc_id = resolution_feature["olc"]
             if olc_id not in seen_olc_ids:
-                cell_geom = Polygon(resolution_feature["geometry"]["coordinates"][0])
+                cell_geom = resolution_feature["geometry"]
                 if not check_predicate(cell_geom, poly, predicate):
                     continue
                 olc_ids.append(olc_id)  # Only append the OLC code string

@@ -5,11 +5,13 @@ import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-from vgrid.conversion.latlon2dggs import latlon2ease
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.easepandas.easegeom import cell2boundary, validate_ease_resolution, polyfill
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_EASE_POLYFILL
+from vgrid.conversion.latlon2dggs import latlon2ease
+from vgrid.conversion.dggs2geo.ease2geo  import ease2geo as ease_to_geo             
+from vgridpandas.easepandas.easegeom import validate_ease_resolution, polyfill
+
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -65,11 +67,12 @@ class EASEPandas:
             latlon2ease(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: ease_ids}
+        # colname = self._format_resolution(resolution)
+        ease_column = "ease"
+        assign_arg = {ease_column: ease_ids, "ease_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(ease_column)
         return df
 
     def ease2geo(self, ease_column: str = None) -> GeoDataFrame:
@@ -109,22 +112,22 @@ class EASEPandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(e_id) for e_id in e_ids]
+                            cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single id
-                        geometries.append(cell2boundary(e_ids))
+                        geometries.append(ease_to_geo(e_ids))
                 except (ValueError, TypeError):
                     if isinstance(e_ids, list):
                         if len(e_ids) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(e_id) for e_id in e_ids]
+                            cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single id
                         try:
-                            geometries.append(cell2boundary(e_ids))
+                            geometries.append(ease_to_geo(e_ids))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -136,7 +139,7 @@ class EASEPandas:
         else:
             # EASE IDs are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
+                wrapped_partial(ease_to_geo),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -204,7 +207,8 @@ class EASEPandas:
             If True, return a GeoDataFrame with ease cell geometry
         """
         # Validate inputs and prepare data
-        colname = self._format_resolution(resolution)
+        # colname = self._format_resolution(resolution)
+        colname = "ease"
         df = self.latlon2ease(resolution, lat_col, lon_col, False)
 
         # Validate column existence

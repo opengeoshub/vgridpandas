@@ -111,6 +111,7 @@ nav:
           - notebooks/00_intro.ipynb
           - notebooks/01_h3.ipynb
           - notebooks/02_s2.ipynb
+          - notebooks/03_a5.ipynb
           - notebooks/04_rhealpix.ipynb
           - notebooks/05_isea4t.ipynb
           - notebooks/06_ease.ipynb
