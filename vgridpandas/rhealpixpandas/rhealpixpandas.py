@@ -5,14 +5,15 @@ import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from shapely.geometry import Polygon, MultiPolygon
-from vgrid.conversion import latlon2dggs
+from vgrid.conversion.latlon2dggs import latlon2rhealpix as latlon_to_rhp
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.rhealpixpandas.rhealpixgeom import cell2boundary, polyfill, validate_rhealpix_resolution
+from vgridpandas.rhealpixpandas.rhealpixgeom import polyfill
+from vgrid.utils.io import validate_rhealpix_resolution
+from vgrid.conversion.dggs2geo.rhealpix2geo import rhealpix2geo as rhp_to_geo
 from vgridpandas.utils.const import COLUMN_RHEALPIX_POLYFILL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
-
 
 @pd.api.extensions.register_dataframe_accessor("rhealpix")
 class rHEALPixPandas:
@@ -62,14 +63,16 @@ class rHEALPixPandas:
             lats = self._df[lat_col]
 
         rhealpix_ids = [
-            latlon2dggs.latlon2rhealpix(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_rhp(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: rhealpix_ids}
+        # rhealpix_column = self._format_resolution(resolution)
+        rhealpix_column = "rhealpix"
+        assign_arg = {rhealpix_column: rhealpix_ids, "rhealpix_res": resolution}
+    
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(rhealpix_column)
         return df
 
     def rhealpix2geo(self, rhealpix_column: str = None) -> GeoDataFrame:
@@ -109,22 +112,22 @@ class rHEALPixPandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(rhp_id) for rhp_id in rhp_ids]
+                            cell_geometries = [rhp_to_geo(rhp_id) for rhp_id in rhp_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single id
-                        geometries.append(cell2boundary(rhp_ids))
+                        geometries.append(rhp_to_geo(rhp_ids))
                 except (ValueError, TypeError):
                     if isinstance(rhp_ids, list):
                         if len(rhp_ids) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(rhp_id) for rhp_id in rhp_ids]
+                            cell_geometries = [rhp_to_geo(rhp_id) for rhp_id in rhp_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single id
                         try:
-                            geometries.append(cell2boundary(rhp_ids))
+                            geometries.append(rhp_to_geo(rhp_ids))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -136,7 +139,7 @@ class rHEALPixPandas:
         else:
             # rHEALPix rhp_ids are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
+                wrapped_partial(rhp_to_geo),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -207,7 +210,8 @@ class rHEALPixPandas:
             If True, return a GeoDataFrame with rHEALPix cell geometry
         """
         # Validate inputs and prepare data
-        colname = self._format_resolution(resolution)
+        # rhealpix_column = self._format_resolution(resolution)
+        rhealpix_column = "rhealpix"
         df = self.latlon2rhealpix(resolution, lat_col, lon_col, False)
 
         # Validate column existence
@@ -217,7 +221,7 @@ class rHEALPixPandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [colname]
+        group_cols = [rhealpix_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -258,14 +262,14 @@ class rHEALPixPandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=colname, columns=category_column, values=stats)
+                result = df.groupby([rhealpix_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=rhealpix_column, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [rhealpix_column] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([rhealpix_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -276,16 +280,16 @@ class rHEALPixPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[colname, category_column, stats])
+                result = pd.DataFrame(columns=[rhealpix_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=colname, columns=category_column, values=stats)
+                    result = result.pivot(index=rhealpix_column, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [colname]
+                    new_columns = [rhealpix_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -294,10 +298,10 @@ class rHEALPixPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(colname).size().reset_index(name=stats)
+                    result = df.groupby(rhealpix_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(colname)
+        result = result.set_index(rhealpix_column)
         if return_geometry:
             result = result.rhealpix.rhealpix2geo()
         return result.reset_index()

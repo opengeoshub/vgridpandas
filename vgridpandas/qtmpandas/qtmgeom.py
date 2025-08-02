@@ -1,8 +1,9 @@
 from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString, box
-from vgrid.utils.qtm import constructGeometry, qtm_id_to_facet, divideFacet
+from vgrid.dggs.qtm import constructGeometry, qtm_id_to_facet, divideFacet
+from vgrid.utils.io import validate_qtm_resolution
 from vgridpandas.utils.geom import check_predicate
-from vgrid.conversion.dggscompact import qtm_compact
+from vgrid.conversion.dggscompact.qtmcompact import qtm_compact
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
@@ -40,47 +41,6 @@ initial_facets = [
                     [n90_p0, n90_p90, p0_p90, p0_p0, n90_p0, False],
                     [n90_p90, n90_p180, p0_p180, p0_p90, n90_p90, False],
                 ]
-
-def validate_qtm_resolution(resolution: int) -> int:
-    """
-    Validate that QTM resolution is in the valid range [1..24].
-
-    Args:
-        resolution: Resolution value to validate
-
-    Returns:
-        int: Validated resolution value
-
-    Raises:
-        ValueError: If resolution is not in range [1..24]
-        TypeError: If resolution is not an integer
-    """
-    if not isinstance(resolution, int):
-        raise TypeError(
-            f"Resolution must be an integer, got {type(resolution).__name__}"
-        )
-
-    if resolution < 1 or resolution > 24:
-        raise ValueError(f"Resolution must be in range [1..24], got {resolution}")
-
-    return resolution
-
-def cell2boundary(qtm_id: str) -> Polygon:
-    """qtm.qtm_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    qtm_id : str
-        QTM ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the qtm cell boundary
-    """
-    # Base octahedral face definitions
-    facet = qtm_id_to_facet(qtm_id)
-    cell_polygon = constructGeometry(facet)
-    return cell_polygon
 
 def poly2qtm(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
     """

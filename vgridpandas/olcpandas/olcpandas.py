@@ -8,7 +8,9 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.olcpandas.olcgeom import cell2boundary, polyfill, validate_olc_resolution
+from vgridpandas.olcpandas.olcgeom import polyfill
+from vgrid.utils.io import validate_olc_resolution
+from vgrid.conversion.dggs2geo.olc2geo import olc2geo as olc_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_OLC_POLYFILL
 
@@ -65,11 +67,12 @@ class OLCPandas:
             latlon2olc(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: olc_ids}
+        # olc_column = self._format_resolution(resolution)
+        olc_column = "olc"
+        assign_arg = {olc_column: olc_ids, "olc_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(olc_column)
         return df
 
     def olc2geo(self, olc_column: str = None) -> GeoDataFrame:
@@ -109,22 +112,22 @@ class OLCPandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(e_id) for e_id in o_ids]
+                            cell_geometries = [olc_to_geo(e_id) for e_id in o_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single id
-                        geometries.append(cell2boundary(o_ids))
+                        geometries.append(olc_to_geo(o_ids))
                 except (ValueError, TypeError):
                     if isinstance(o_ids, list):
                         if len(o_ids) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(o_id) for o_id in o_ids]
+                            cell_geometries = [olc_to_geo(o_id) for o_id in o_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single id
                         try:
-                            geometries.append(cell2boundary(o_ids))
+                            geometries.append(olc_to_geo(o_ids))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -136,7 +139,7 @@ class OLCPandas:
         else:
             # OLC IDs are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
+                wrapped_partial(olc_to_geo),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -206,7 +209,8 @@ class OLCPandas:
             If True, return a GeoDataFrame with olc cell geometry
         """
         # Validate inputs and prepare data
-        colname = self._format_resolution(resolution)
+        # olc_column = self._format_resolution(resolution)
+        olc_column = "olc"
         df = self.latlon2olc(resolution, lat_col, lon_col, False)
 
         # Validate column existence
@@ -216,7 +220,7 @@ class OLCPandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [colname]
+        group_cols = [olc_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -257,14 +261,14 @@ class OLCPandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=colname, columns=category_column, values=stats)
+                result = df.groupby([olc_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=olc_column, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [olc_column] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([olc_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -275,16 +279,16 @@ class OLCPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[colname, category_column, stats])
+                result = pd.DataFrame(columns=[olc_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=colname, columns=category_column, values=stats)
+                    result = result.pivot(index=olc_column, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [colname]
+                    new_columns = [olc_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -293,10 +297,10 @@ class OLCPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(colname).size().reset_index(name=stats)
+                    result = df.groupby(olc_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(colname)
+        result = result.set_index(olc_column)
         if return_geometry:
             result = result.olc.olc2geo()
         return result.reset_index()

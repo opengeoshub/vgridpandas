@@ -1,68 +1,15 @@
 from typing import Union, Set
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.utils import geohash
-from vgrid.conversion.dggscompact import geohash_compact
-from vgrid.generator.geohashgrid import (
-    initial_geohashes,
-    geohash_to_polygon,
-    expand_geohash_bbox,
-)
+from vgrid.utils.io import validate_geohash_resolution
+from vgrid.conversion.dggscompact.geohashcompact import geohash_compact
+from vgrid.conversion.dggs2geo.geohash2geo import geohash2geo as geohash_to_geo
+from vgrid.generator.geohashgrid import  expand_geohash_bbox
+from vgrid.generator.settings import INITIAL_GEOHASHES      
 from vgridpandas.utils.geom import check_predicate
 
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
-
-def validate_geohash_resolution(resolution: int) -> int:
-    """
-    Validate that geohash resolution is in the valid range [1..10].
-
-    Args:
-        resolution: Resolution value to validate
-
-    Returns:
-        int: Validated resolution value
-
-    Raises:
-        ValueError: If resolution is not in range [1..10]
-        TypeError: If resolution is not an integer
-    """
-    if not isinstance(resolution, int):
-        raise TypeError(
-            f"Resolution must be an integer, got {type(resolution).__name__}"
-        )
-
-    if resolution < 1 or resolution > 10:
-        raise ValueError(f"Resolution must be in range [1..10], got {resolution}")
-
-    return resolution
-
-def cell2boundary(geohash_id: str) -> Polygon:
-    """geohash.geohash_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    geohash_id : str
-        geohash ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the geohash cell boundary
-    """
-    # Base octahedral face definitions
-    bbox = geohash.bbox(geohash_id)
-    min_lat, min_lon = bbox["s"], bbox["w"]
-    max_lat, max_lon = bbox["n"], bbox["e"]
-    cell_polygon = Polygon(
-        [
-            [min_lon, min_lat],
-            [max_lon, min_lat],
-            [max_lon, max_lat],
-            [min_lon, max_lat],
-            [min_lon, min_lat],
-        ]
-    )
-    return cell_polygon
 
 def poly2geohash(
     geometry: MultiPolyOrPoly,
@@ -100,13 +47,13 @@ def poly2geohash(
 
     for poly in polys:
         intersected_geohashes = {
-            gh for gh in initial_geohashes if geohash_to_polygon(gh).intersects(poly)
+            gh for gh in INITIAL_GEOHASHES if geohash_to_geo(gh).intersects(poly)
         }
         geohashes_bbox = set()
         for gh in intersected_geohashes:
             expand_geohash_bbox(gh, resolution, geohashes_bbox, poly)
         for gh in geohashes_bbox:
-            cell_polygon = geohash_to_polygon(gh)
+            cell_polygon = geohash_to_geo(gh)
             if not check_predicate(cell_polygon, poly, predicate):
                 continue
             geohash_ids.append(gh)

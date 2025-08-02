@@ -1,67 +1,13 @@
 from typing import Union, Set
+import re
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.utils import mercantile
-import os, json, re
+from vgrid.dggs import mercantile
 from vgridpandas.utils.geom import check_predicate
-from vgrid.conversion.dggscompact import tilecode_compact
+from vgrid.conversion.dggscompact.tilecodecompact import tilecode_compact
+from vgrid.utils.io import validate_tilecode_resolution
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
-
-def validate_tilecode_resolution(resolution: int) -> int:
-    """
-    Validate that tilecode resolution is in the valid range [0..29].
-
-    Args:
-        resolution: Resolution value to validate
-
-    Returns:
-        int: Validated resolution value
-
-    Raises:
-        ValueError: If resolution is not in range [0..29]
-        TypeError: If resolution is not an integer
-    """
-    if not isinstance(resolution, int):
-        raise TypeError(
-            f"Resolution must be an integer, got {type(resolution).__name__}"
-        )
-
-    if resolution < 0 or resolution > 29:
-        raise ValueError(f"Resolution must be in range [0..29], got {resolution}")
-
-    return resolution
-
-
-def cell2boundary(tilecode_id: str) -> Polygon:
-    """tilecode.tilecode_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    tilecode_id : str
-        tilecode ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the tilecode cell boundary
-    """
-    match = re.match(r"z(\d+)x(\d+)y(\d+)", tilecode_id)
-    z = int(match.group(1))
-    x = int(match.group(2))
-    y = int(match.group(3))
-    bounds = mercantile.bounds(x, y, z)    
-    min_lat, min_lon = bounds.south, bounds.west
-    max_lat, max_lon = bounds.north, bounds.east
-    cell_polygon = Polygon(
-        [
-            [min_lon, min_lat],
-            [max_lon, min_lat],
-            [max_lon, max_lat],
-            [min_lon, max_lat],
-            [min_lon, min_lat],
-        ]
-    )
-    return cell_polygon
 
 def poly2tilecode(
     geometry: MultiPolyOrPoly,

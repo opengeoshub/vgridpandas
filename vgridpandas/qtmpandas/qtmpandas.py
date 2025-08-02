@@ -4,12 +4,14 @@ from shapely.geometry import Polygon, MultiPolygon
 import pandas as pd
 import geopandas as gpd
 
-from vgrid.utils import qtm
+from vgrid.dggs import qtm
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.qtmpandas.qtmgeom import cell2boundary, polyfill, validate_qtm_resolution
+from vgridpandas.qtmpandas.qtmgeom import polyfill
+from vgrid.utils.io import validate_qtm_resolution
+from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_QTM_POLYFILL
 
@@ -67,11 +69,12 @@ class QTMPandas:
             qtm.latlon_to_qtm_id(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: qtm_ids}
+        # qtm_column = self._format_resolution(resolution)
+        qtm_column = "qtm"
+        assign_arg = {qtm_column: qtm_ids, "qtm_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(qtm_column)
         return df
 
     def qtm2geo(self, qtm_column: str = None) -> GeoDataFrame:
@@ -111,22 +114,22 @@ class QTMPandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(e_id) for e_id in q_ids]
+                            cell_geometries = [qtm_to_geo(e_id) for e_id in q_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single id
-                        geometries.append(cell2boundary(q_ids))
+                        geometries.append(qtm_to_geo(q_ids))
                 except (ValueError, TypeError):
                     if isinstance(q_ids, list):
                         if len(q_ids) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(q_id) for q_id in q_ids]
+                            cell_geometries = [qtm_to_geo(q_id) for q_id in q_ids]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single id
                         try:
-                            geometries.append(cell2boundary(q_ids))
+                            geometries.append(qtm_to_geo(q_ids))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -138,7 +141,7 @@ class QTMPandas:
         else:
             # QTM IDs are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
+                wrapped_partial(qtm_to_geo),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -206,10 +209,11 @@ class QTMPandas:
         """
         # Validate inputs and prepare data
         resolution = validate_qtm_resolution(resolution)
-        colname = self._format_resolution(resolution)
+        # qtm_column = self._format_resolution(resolution)
+        qtm_column = "qtm"
         df = self.latlon2qtm(resolution, lat_col, lon_col, False)
         # Filter to keep only QTM IDs at the requested resolution
-        df = df[df[colname].astype(str).str.len() == resolution]
+        df = df[df[qtm_column].astype(str).str.len() == resolution]
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
@@ -218,7 +222,7 @@ class QTMPandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [colname]
+        group_cols = [qtm_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -259,14 +263,14 @@ class QTMPandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=colname, columns=category_column, values=stats)
+                result = df.groupby([qtm_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=qtm_column, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [qtm_column] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([qtm_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -277,16 +281,16 @@ class QTMPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[colname, category_column, stats])
+                result = pd.DataFrame(columns=[qtm_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=colname, columns=category_column, values=stats)
+                    result = result.pivot(index=qtm_column, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [colname]
+                    new_columns = [qtm_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -295,10 +299,10 @@ class QTMPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(colname).size().reset_index(name=stats)
+                    result = df.groupby(qtm_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(colname)
+        result = result.set_index(qtm_column)
         if return_geometry:
             result = result.qtm.qtm2geo()
         return result.reset_index()

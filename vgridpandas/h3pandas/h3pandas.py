@@ -12,10 +12,10 @@ import h3
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
-from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -66,12 +66,12 @@ class H3Pandas:
         >>> df = pd.DataFrame({'lat': [50, 51], 'lng':[14, 15]})
         >>> df.h3.geo_to_h3(8)
                          lat  lng
-        h3_08
+        h3
         881e309739fffff   50   14
         881e2659c3fffff   51   15
 
         >>> df.h3.geo_to_h3(8, set_index=False)
-           lat  lng            h3_08
+           lat  lng            h3
         0   50   14  881e309739fffff
         1   51   15  881e2659c3fffff
 
@@ -79,7 +79,7 @@ class H3Pandas:
         >>> geometry=gpd.points_from_xy(x=[14, 15], y=(50, 51)))
         >>> gdf.h3.geo_to_h3(8)
                          val                   geometry
-        h3_08
+        h3
         881e309739fffff    5  POINT (14.00000 50.00000)
         881e2659c3fffff    1  POINT (15.00000 51.00000)
 
@@ -98,11 +98,12 @@ class H3Pandas:
             h3.latlng_to_cell(lat, lng, resolution) for lat, lng in zip(lats, lngs)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: h3_id}
+        # h3_column = self._format_resolution(resolution)
+        h3_column = "h3"
+        assign_arg = {h3_column: h3_id, "h3_res": resolution}   
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(h3_column)
         return df
 
     def h32latlon(self) -> GeoDataFrame:
@@ -358,7 +359,7 @@ class H3Pandas:
         )
 
     @doc_standard(
-        COLUMN_H3_POLYFILL,
+        "h3",
         "containing a list H3 ID whose centroid falls into the Polygon",
     )
     def polyfill(self, resolution: int, explode: bool = False) -> AnyDataFrame:
@@ -382,10 +383,10 @@ class H3Pandas:
         >>> from shapely.geometry import box
         >>> gdf = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)])
         >>> gdf.h3.polyfill(4)
-                                                    geometry                                        h3_polyfill
+                                                    geometry                                        h3
         0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  [84754e3ffffffff, 84754c7ffffffff, 84754c5ffff...  # noqa E501
         >>> gdf.h3.polyfill(4, explode=True)
-                                                    geometry      h3_polyfill
+                                                    geometry      h3
         0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754e3ffffffff
         0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754c7ffffffff
         0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754c5ffffffff
@@ -402,10 +403,10 @@ class H3Pandas:
         result = self._df.apply(func, axis=1)
 
         if not explode:
-            assign_args = {COLUMN_H3_POLYFILL: result}
+            assign_args = {"h3": result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_H3_POLYFILL)
+        result = result.explode().to_frame("h3")
 
         return self._df.join(result)
 
@@ -496,7 +497,8 @@ class H3Pandas:
         grouped = pd.DataFrame(
             self.latlon2h3(resolution, lat_col, lon_col, False)
             .drop(columns=[lat_col, lon_col, "geometry"], errors="ignore")
-            .groupby(self._format_resolution(resolution))
+            # .groupby(self._format_resolution(resolution))
+            .groupby("h3")
             .agg(operation)
         )
         return grouped.h3.h32geo() if return_geometry else grouped
@@ -558,7 +560,8 @@ class H3Pandas:
             catch_invalid_dggs_id(h3.cell_to_parent)(h3id, resolution)
             for h3id in self._df.index
         ]
-        h3_parent_column = self._format_resolution(resolution)
+        # h3_parent_column = self._format_resolution(resolution)
+        h3_parent_column = "h3"
         kwargs_assign = {h3_parent_column: parent_h3ID}
         grouped = (
             self._df.assign(**kwargs_assign)
@@ -736,7 +739,7 @@ class H3Pandas:
         >>> gdf = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)])
         >>> gdf.h3.polyfill_resample(4)
                          index                                           geometry
-        h3_polyfill
+        h3
         84754e3ffffffff      0  POLYGON ((0.33404 -0.11975, 0.42911 0.07901, 0...
         84754c7ffffffff      0  POLYGON ((0.92140 -0.03115, 1.01693 0.16862, 0...
         84754c5ffffffff      0  POLYGON ((0.91569 0.33807, 1.01106 0.53747, 0....

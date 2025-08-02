@@ -10,7 +10,9 @@ from geopandas.geodataframe import GeoDataFrame
 from vgrid.conversion import latlon2dggs
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.s2pandas.s2geom import cell2boundary, polyfill, validate_s2_resolution
+from vgridpandas.s2pandas.s2geom import  polyfill
+from vgrid.utils.io import validate_s2_resolution
+from vgrid.conversion.dggs2geo.s22geo import s22geo as s2_to_geo
 from vgridpandas.utils.const import COLUMN_S2_POLYFILL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -64,11 +66,12 @@ class S2Pandas:
             latlon2dggs.latlon2s2(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        colname = self._format_resolution(resolution)
-        assign_arg = {colname: s2_tokens}
+        # s2_column = self._format_resolution(resolution)
+        s2_column = "s2"
+        assign_arg = {s2_column: s2_tokens, "s2_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(colname)
+            return df.set_index(s2_column)
         return df
 
     def s22geo(self, s2_column: str = None) -> GeoDataFrame:
@@ -108,22 +111,22 @@ class S2Pandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(token) for token in tokens]
+                            cell_geometries = [s2_to_geo(token) for token in tokens]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single token
-                        geometries.append(cell2boundary(tokens))
+                        geometries.append(s2_to_geo(tokens))
                 except (ValueError, TypeError):
                     if isinstance(tokens, list):
                         if len(tokens) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell2boundary(token) for token in tokens]
+                            cell_geometries = [s2_to_geo(token) for token in tokens]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single token
                         try:
-                            geometries.append(cell2boundary(tokens))
+                            geometries.append(s2_to_geo(tokens))
                         except Exception:
                             # If all else fails, create empty geometry
                             geometries.append(Polygon())
@@ -135,7 +138,7 @@ class S2Pandas:
         else:
             # S2 tokens are in the index
             return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
+                wrapped_partial(s2_to_geo),
                 "geometry",
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
@@ -206,7 +209,8 @@ class S2Pandas:
             If True, return a GeoDataFrame with S2 cell geometry
         """
         # Validate inputs and prepare data
-        colname = self._format_resolution(resolution)
+        # s2_column = self._format_resolution(resolution)
+        s2_column = "s2"
         df = self.latlon2s2(resolution, lat_col, lon_col, False)
 
         # Validate column existence
@@ -216,7 +220,7 @@ class S2Pandas:
             raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
 
         # Prepare grouping columns
-        group_cols = [colname]
+        group_cols = [s2_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -257,14 +261,14 @@ class S2Pandas:
             if category_column:
                 # Handle categorical aggregation with category grouping
                 all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([colname, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=colname, columns=category_column, values=stats)
+                result = df.groupby([s2_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=s2_column, columns=category_column, values=stats)
                 result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
                 result = result.reset_index()
-                result.columns = [colname] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [s2_column] + [f"{cat}_{stats}" for cat in all_categories]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([colname]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = df.groupby([s2_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
@@ -275,16 +279,16 @@ class S2Pandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[colname, category_column, stats])
+                result = pd.DataFrame(columns=[s2_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=colname, columns=category_column, values=stats)
+                    result = result.pivot(index=s2_column, columns=category_column, values=stats)
                     result = result.fillna(0)
                     result = result.reset_index()
                     
                     # Rename columns with category prefixes
-                    new_columns = [colname]
+                    new_columns = [s2_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -293,10 +297,10 @@ class S2Pandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(colname).size().reset_index(name=stats)
+                    result = df.groupby(s2_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(colname)
+        result = result.set_index(s2_column)
         if return_geometry:
             result = result.s2.s22geo()
         return result.reset_index()
@@ -314,7 +318,7 @@ class S2Pandas:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each S2 Token
+            single-argument function to be applied to each H3 id
         column_name : str
             name of the resulting column
         processor : Callable
@@ -328,9 +332,10 @@ class S2Pandas:
         If using `finalizer`, can return anything the `finalizer` returns.
         """
         func = catch_invalid_dggs_id(func)
-        result = [processor(func(s2token)) for s2token in self._df.index]
+        result = [processor(func(s2id)) for s2id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
+
 
     def _apply_index_explode(
         self,
@@ -362,7 +367,7 @@ class S2Pandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {h3address: processor(func(h3address)) for h3address in self._df.index},
+                {s2_id: processor(func(s2_id)) for s2_id in self._df.index},
                 orient="index",
             )
             .stack()

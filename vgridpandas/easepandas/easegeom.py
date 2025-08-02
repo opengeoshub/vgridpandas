@@ -1,12 +1,11 @@
 from typing import Union, Set, Iterator
 from shapely.geometry import box, Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.utils.easedggs.constants import levels_specs, geo_crs, ease_crs
-from vgrid.utils.easedggs.dggs.grid_addressing import (
+from vgrid.dggs.easedggs.constants import levels_specs, geo_crs, ease_crs
+from vgrid.dggs.easedggs.dggs.grid_addressing import (
     grid_ids_to_geos,
-    geos_to_grid_ids,
     geo_polygon_to_grid_ids,
 )
-from vgrid.conversion.dggscompact import ease_compact
+from vgrid.conversion.dggscompact.easecompact import ease_compact
 from vgridpandas.utils.geom import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
@@ -35,40 +34,6 @@ def validate_ease_resolution(resolution):
         raise ValueError(f"Resolution must be in range [0..6], got {resolution}")
 
     return resolution
-
-def cell2boundary(ease_id: str) -> Polygon:
-    """ease.ease_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    ease_id : str
-        EASE ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the ease cell boundary
-    """
-    # Base octahedral face definitions
-    level = int(ease_id[1])
-    level_spec = levels_specs[level]
-    n_row = level_spec["n_row"]
-    n_col = level_spec["n_col"]
-    geo = grid_ids_to_geos([ease_id])
-    center_lon, center_lat = geo["result"]["data"][0]
-    cell_min_lat = center_lat - (180 / (2 * n_row))
-    cell_max_lat = center_lat + (180 / (2 * n_row))
-    cell_min_lon = center_lon - (360 / (2 * n_col))
-    cell_max_lon = center_lon + (360 / (2 * n_col))
-    cell_polygon = Polygon(
-        [
-            [cell_min_lon, cell_min_lat],
-            [cell_max_lon, cell_min_lat],
-            [cell_max_lon, cell_max_lat],
-            [cell_min_lon, cell_max_lat],
-            [cell_min_lon, cell_min_lat],
-        ]
-    )
-    return cell_polygon
 
 def poly2ease(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
     """

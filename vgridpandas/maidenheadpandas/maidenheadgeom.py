@@ -1,6 +1,6 @@
 from typing import Union, Set, Iterator
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.utils import maidenhead
+from vgrid.dggs import maidenhead
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
@@ -28,27 +28,3 @@ def validate_maidenhead_resolution(resolution: int) -> int:
         raise ValueError(f"Resolution must be in range [1..4], got {resolution}")
 
     return resolution
-
-def cell2boundary(maidenhead_id: str) -> Polygon:
-    """maidenhead.maidenhead_to_geo_boundary equivalent for shapely
-
-    Parameters
-    ----------
-    maidenhead_id : str
-        maidenhead ID to convert to a boundary
-
-    Returns
-    -------
-    Polygon representing the maidenhead cell boundary
-    """
-    _, _, min_lat, min_lon, max_lat, max_lon, _ = maidenhead.maidenGrid(maidenhead_id)
-    cell_polygon = Polygon(
-            [
-                [min_lon, min_lat],
-                [max_lon, min_lat],
-                [max_lon, max_lat],
-                [min_lon, max_lat],
-                [min_lon, min_lat],
-            ]
-        )
-    return cell_polygon
