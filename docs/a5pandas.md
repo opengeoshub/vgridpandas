@@ -1,3 +1,3 @@
-# A5Pandas
+# A5Pandas module
 
-Coming soon... 
+::: vgridpandas.a5pandas

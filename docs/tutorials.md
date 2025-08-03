@@ -10,7 +10,7 @@
 0. Introducing the vgridpandas Python package ([notebook](https://vgridpandas.gishub.vn/notebooks/00_intro))
 1. Working with vgridpandas.h3pandas ([notebook](https://vgridpandas.gishub.vn/notebooks/01_h3))
 2. Working with vgridpandas.s2pandas ([notebook](https://vgridpandas.gishub.vn/notebooks/02_s2))
-3. (Coming soon) Working with vgridpandas.a5pandas ([notebook](https://vgridpandas.gishub.vn/notebooks/03_a5))
+3. Working with vgridpandas.a5pandas ([notebook](https://vgridpandas.gishub.vn/notebooks/03_a5))
 4. Working with vgridpandas.rhealpixpandas ([notebook](https://vgridpandas.gishub.vn/notebooks/04_rhealpix))
 5. Working with vgridpandas.isea4tpandas ([notebook](https://vgridpandas.gishub.vn/notebooks/05_isea4t))
 6. Working with vgridpandas.easepandas ([notebook](https://vgridpandas.gishub.vn/notebooks/06_ease))
