@@ -1,7 +1,6 @@
 from typing import Union, Set
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.generator.olcgrid import generate_grid, refine_cell
-from vgrid.dggs import olc
+from vgrid.generator.olcgrid import olc_grid, olc_refine_cell
 from vgrid.utils.io import validate_olc_resolution
 from vgrid.conversion.dggscompact.olccompact import olc_compact
 from vgridpandas.utils.geom import check_predicate
@@ -46,7 +45,7 @@ def poly2olc(
 
     for poly in polys:
         base_resolution = 2
-        base_cells_gdf = generate_grid(base_resolution,verbose=False)
+        base_cells_gdf = olc_grid(base_resolution,verbose=False)
         seed_cells = []
         for idx, base_cell in base_cells_gdf.iterrows():
             base_cell_poly = base_cell["geometry"]
@@ -59,7 +58,7 @@ def poly2olc(
                 refined_features.append(seed_cell)
             else:
                 refined_features.extend(
-                    refine_cell(
+                    olc_refine_cell(
                         seed_cell_poly.bounds, base_resolution, resolution, poly
                     )
                 )
