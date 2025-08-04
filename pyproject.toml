@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vgridpandas"
 readme = "README.md"
-version = "1.0.2"
+version = "1.0.4"
 description = "Integration of Vgrid DGGS into Pandas and GeoPandas"
 license = { file = "LICENSE" }
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]

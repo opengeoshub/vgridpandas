@@ -1,4 +1,4 @@
-from typing import Union, Callable, Sequence, Any
+from typing import Union, Callable, Sequence, Any, Counter
 import warnings
 
 from typing import Literal
@@ -7,6 +7,7 @@ import numpy as np
 import shapely
 import pandas as pd
 import geopandas as gpd
+from shapely.geometry import MultiPolygon, Polygon
 
 import h3
 from pandas.core.frame import DataFrame
@@ -140,8 +141,13 @@ class H3Pandas:
             lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
         )
 
-    def h32geo(self) -> GeoDataFrame:
-        """Add `geometry` with H3 hexagons to the DataFrame. Assumes H3 index.
+    def h32geo(self, h3_column: str = None) -> GeoDataFrame:
+        """Add geometry with H3 geometry to the DataFrame. Assumes H3 token.
+
+        Parameters
+        ----------
+        h3_column : str, optional
+            Name of the column containing H3 tokens. If None, assumes H3 tokens are in the index.
 
         Returns
         -------
@@ -150,22 +156,197 @@ class H3Pandas:
         Raises
         ------
         ValueError
-            When an invalid H3 id is encountered
+            When an invalid H3 token is encountered
 
         Examples
         --------
         >>> df = pd.DataFrame({'val': [5, 1]},
         >>>                   index=['881e309739fffff', '881e2659c3fffff'])
-        >>> df.h3.h3_to_geo_boundary()
+        >>> df.h3.h32geo()
                          val                                           geometry
         881e309739fffff    5  POLYGON ((13.99527 50.00368, 13.99310 49.99929...
         881e2659c3fffff    1  POLYGON ((14.99201 51.00565, 14.98973 51.00133...
         """
-        return self._apply_index_assign(
-            wrapped_partial(cell_to_boundary_lng_lat),
-            "geometry",
-            finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-        )
+
+        if h3_column is not None:
+            # H3 tokens are in the specified column
+            if h3_column not in self._df.columns:
+                raise ValueError(f"Column '{h3_column}' not found in DataFrame")
+            h3_tokens = self._df[h3_column]
+
+            # Handle both single tokens and lists of tokens
+            geometries = []
+            for tokens in h3_tokens:
+                try:
+                    if pd.isna(tokens):
+                        # Handle NaN values - create empty geometry
+                        geometries.append(Polygon())
+                    elif isinstance(tokens, list):
+                        # Handle list of tokens - create a MultiPolygon
+                        if len(tokens) == 0:
+                            # Handle empty list - create empty geometry
+                            geometries.append(Polygon())
+                        else:
+                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
+                            geometries.append(MultiPolygon(cell_geometries))
+                    else:
+                        # Handle single token
+                        geometries.append(cell_to_boundary_lng_lat(tokens))
+                except (ValueError, TypeError):
+                    if isinstance(tokens, list):
+                        if len(tokens) == 0:
+                            geometries.append(Polygon())
+                        else:
+                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
+                            geometries.append(MultiPolygon(cell_geometries))
+                    else:
+                        # Try to handle as single token
+                        try:
+                            geometries.append(cell_to_boundary_lng_lat(tokens))
+                        except Exception:
+                            # If all else fails, create empty geometry
+                            geometries.append(Polygon())
+
+            result_df = self._df.copy()
+            result_df['geometry'] = geometries
+            return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+
+        else:
+            # H3 tokens are in the index
+            return self._apply_index_assign(
+                wrapped_partial(cell_to_boundary_lng_lat),
+                "geometry",
+                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+            )
+
+    def h3bin(
+        self,
+        resolution: int,
+        stats: str = "count",
+        numeric_column: str = None,
+        category_column: str = None,
+        lat_col: str = "lat",
+        lon_col: str = "lon",
+        return_geometry: bool = True,
+    ) -> DataFrame:
+        """
+        Bin points into H3 cells and compute statistics, optionally grouped by a category column.
+
+        Supports both GeoDataFrame (with point geometry) and DataFrame (with lat/lon columns).
+
+        Parameters
+        ----------
+        resolution : int
+            H3 resolution
+        stats : str
+            Statistic to compute: count, sum, min, max, mean, median, std, var, range, minority, majority, variety
+        numeric_column : str, optional
+            Name of the numeric column to aggregate (for sum, min, max, etc.) or the value column for minority/majority/variety stats
+        category_column : str, optional
+            Name of the category column to group by. Required for minority, majority, and variety stats when grouping by category.
+        lat_col : str, optional
+            Name of the latitude column (only used for DataFrame input, ignored for GeoDataFrame)
+        lon_col : str, optional
+            Name of the longitude column (only used for DataFrame input, ignored for GeoDataFrame)
+        return_geometry : bool
+            If True, return a GeoDataFrame with H3 cell geometry
+        """
+        # Validate inputs and prepare data
+        # h3_column = self._format_resolution(resolution)
+        h3_column = "h3"
+        df = self.latlon2h3(resolution, lat_col, lon_col, False)
+
+        # Validate column existence
+        if category_column is not None and category_column not in df.columns:
+            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+        if numeric_column is not None and numeric_column not in df.columns:
+            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+
+        # Prepare grouping columns
+        group_cols = [h3_column]
+        if category_column:
+            df[category_column] = df[category_column].fillna("NaN_category")
+            group_cols.append(category_column)
+
+        # Perform aggregation based on stats type
+        if stats == "count":
+            result = df.groupby(group_cols).size().reset_index(name=stats)
+            
+        elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
+            
+        elif stats == "range":
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
+            result[stats] = result['max'] - result['min']
+            result = result.drop(['min', 'max'], axis=1)
+            
+        elif stats in ["minority", "majority", "variety"]:
+            if not numeric_column:
+                raise ValueError(f"numeric_column must be provided for stats='{stats}'")
+            
+            # Define categorical aggregation function
+            def cat_agg_func(x):
+                values = x[numeric_column].dropna()
+                freq = Counter(values)
+                if not freq:
+                    return None
+                if stats == "minority":
+                    return min(freq.items(), key=lambda y: y[1])[0]
+                elif stats == "majority":
+                    return max(freq.items(), key=lambda y: y[1])[0]
+                elif stats == "variety":
+                    return values.nunique()
+
+            if category_column:
+                # Handle categorical aggregation with category grouping
+                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
+                result = df.groupby([h3_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = result.pivot(index=h3_column, columns=category_column, values=stats)
+                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                result = result.reset_index()
+                result.columns = [h3_column] + [f"{cat}_{stats}" for cat in all_categories]
+            else:
+                # Handle categorical aggregation without category grouping
+                result = df.groupby([h3_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+        else:
+            raise ValueError(f"Unknown stats: {stats}")
+
+        # Handle column renaming for non-categorical stats
+        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+            result = result.rename(columns={result.columns[-1]: stats})
+
+        # Handle category pivoting for non-categorical stats
+        if category_column and stats not in ["minority", "majority", "variety"]:
+            if len(result) == 0:
+                result = pd.DataFrame(columns=[h3_column, category_column, stats])
+            else:
+                try:
+                    # Pivot categories to columns
+                    result = result.pivot(index=h3_column, columns=category_column, values=stats)
+                    result = result.fillna(0)
+                    result = result.reset_index()
+                    
+                    # Rename columns with category prefixes
+                    new_columns = [h3_column]
+                    for col in sorted(result.columns[1:]):
+                        if col == "NaN_category":
+                            new_columns.append(f"NaN_{stats}")
+                        else:
+                            new_columns.append(f"{col}_{stats}")
+                    result.columns = new_columns
+                except Exception:
+                    # Fallback to simple count if pivot fails
+                    result = df.groupby(h3_column).size().reset_index(name=stats)
+
+        # Add geometry if requested
+        result = result.set_index(h3_column)
+        if return_geometry:
+            result = result.h3.h32geo()
+        return result.reset_index()
 
     @doc_standard("h3_resolution", "containing the resolution of each H3 id")
     def h3_get_resolution(self) -> AnyDataFrame:
@@ -362,7 +543,13 @@ class H3Pandas:
         "h3",
         "containing a list H3 ID whose centroid falls into the Polygon",
     )
-    def polyfill(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self, 
+        resolution: int, 
+        explode: bool = False,
+        predicate: str = None,
+        compact: bool = False
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -372,33 +559,14 @@ class H3Pandas:
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
             Default: False
-
-        See Also
-        --------
-        polyfill_resample : Extended API method that distributes the polygon's values
-            to the H3 cells contained in it
-
-        Examples
-        --------
-        >>> from shapely.geometry import box
-        >>> gdf = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)])
-        >>> gdf.h3.polyfill(4)
-                                                    geometry                                        h3
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  [84754e3ffffffff, 84754c7ffffffff, 84754c5ffff...  # noqa E501
-        >>> gdf.h3.polyfill(4, explode=True)
-                                                    geometry      h3
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754e3ffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754c7ffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754c5ffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754ebffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754edffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754e1ffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  84754e9ffffffff
-        0  POLYGON ((1.00000 0.00000, 1.00000 1.00000, 0....  8475413ffffffff
+        predicate : str, optional
+            Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
+        compact : bool, optional
+            Enable H3 compact mode      
         """
 
         def func(row):
-            return list(polyfill(row.geometry, resolution))
+            return list(polyfill(row.geometry, resolution, predicate, compact))
 
         result = self._df.apply(func, axis=1)
 
@@ -809,7 +977,6 @@ class H3Pandas:
         result = result.explode().to_frame(COLUMN_H3_LINETRACE)
         return df.join(result)
 
-    # Private methods
 
     def _apply_index_assign(
         self,
