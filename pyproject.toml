@@ -11,8 +11,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
-    "vgrid",
-    "fiona"
+    "vgrid"
     ]
 
 [tool.setuptools_scm]
