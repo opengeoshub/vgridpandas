@@ -5,7 +5,7 @@ markdown_text = """
 ## What's Changed
 
 
-**Full Changelog**: https://github.com/opengeoshub/vgridpandas/compare/v1.1.1...v1.0.0
+**Full Changelog**: https://github.com/opengeoshub/vgridpandas/compare/v1.0.4...v1.0.0
 """
 
 # Regular expression pattern to match the Markdown hyperlinks
