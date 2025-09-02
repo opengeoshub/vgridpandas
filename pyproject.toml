@@ -5,14 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vgridpandas"
 readme = "README.md"
-version = "1.0.4"
+version = "1.0.6"
 description = "Integration of Vgrid DGGS into Pandas and GeoPandas"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [{ name = "Thang Quach", email = "quachdongthang@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
-    "vgrid",
-    "fiona"
+    "vgrid"
     ]
 
 [tool.setuptools_scm]
@@ -26,6 +25,9 @@ Download = "https://github.com/opengeoshub/vgridpandas/releases"
 
 [tool.setuptools]
 zip-safe = false
+license-files = ["LICENSE*"]
+
+
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -100,7 +100,7 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
                     cell_id = a5.lonlat_to_cell([centroid_lon, centroid_lat], resolution)
                     cell_polygon = a5_to_geo(cell_id)
                     
-                    a5_hex = a5.bigint_to_hex(cell_id)
+                    a5_hex = a5.u64_to_hex(cell_id)
                     
                     # Only process if this A5 hex code hasn't been seen before
                     if a5_hex not in seen_a5_hex:
@@ -117,7 +117,7 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
         for a5_hex in a5_hexes:
             try:
                 # Convert A5 hex to geometry
-                cell_id = a5.hex_to_bigint(a5_hex)
+                cell_id = a5.hex_to_u64(a5_hex)
                 geometry = a5_to_geo(cell_id)
                 a5_data.append({"a5": a5_hex, "geometry": geometry})
             except Exception as e:
