@@ -146,7 +146,7 @@ class DGGRIDPandas:
                 # DGGRID ids are in the index
                 return self._apply_index_assign(
                     wrapped_partial(
-                        self._dggrid_id_to_geometry, dggrid_instance, dggs_type, resolution, address_type
+                        dggrid_to_geo, dggrid_instance, dggs_type, resolution, address_type
                     ),
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
@@ -355,18 +355,14 @@ class DGGRIDPandas:
                         geometries.append(Polygon())
                     else:
                         cell_geometries = [
-                            self._extract_geometry_from_dggrid_result(
-                                dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
-                            )
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
                             for id in ids
                         ]
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Handle single dggrid_id
                     geometries.append(
-                        self._extract_geometry_from_dggrid_result(
-                            dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
-                        )
+                        dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
                     )
             except (ValueError, TypeError):
                 if isinstance(ids, list):
@@ -374,9 +370,7 @@ class DGGRIDPandas:
                         geometries.append(Polygon())
                     else:
                         cell_geometries = [
-                            self._extract_geometry_from_dggrid_result(
-                                dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
-                            )
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
                             for id in ids
                         ]
                         geometries.append(MultiPolygon(cell_geometries))
@@ -384,69 +378,12 @@ class DGGRIDPandas:
                     # Try to handle as single dggrid_id
                     try:
                         geometries.append(
-                            self._extract_geometry_from_dggrid_result(
-                                dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
-                            )
+                            dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
                         )
                     except Exception:
                         # If all else fails, create empty geometry
                         geometries.append(Polygon())
         return geometries
-
-    def _dggrid_id_to_geometry(self, dggrid_instance, dggs_type, dggrid_id, resolution, address_type):
-        """Convert a single DGGRID ID to a Shapely geometry object.
-        
-        Parameters
-        ----------
-        dggrid_instance : DGGRIDv7
-            DGGRID instance
-        dggs_type : str
-            DGGRID type
-        dggrid_id : str or int
-            DGGRID ID to convert
-        resolution : int
-            DGGRID resolution
-        address_type : str
-            Address type
-            
-        Returns
-        -------
-        Shapely geometry object (Polygon or MultiPolygon)
-        """
-        try:
-            dggrid_result = dggrid_to_geo(dggrid_instance, dggs_type, dggrid_id, resolution, address_type)
-            return self._extract_geometry_from_dggrid_result(dggrid_result)
-        except Exception:
-            return Polygon()
-
-    def _extract_geometry_from_dggrid_result(self, dggrid_result):
-        """Extract individual Shapely geometry from dggrid2geo result.
-        
-        The dggrid2geo function returns a GeoDataFrame, but we need individual
-        Shapely geometry objects. This method extracts the geometry from the
-        GeoDataFrame result.
-        
-        Parameters
-        ----------
-        dggrid_result : GeoDataFrame or Shapely geometry
-            Result from dggrid2geo function
-            
-        Returns
-        -------
-        Shapely geometry object (Polygon or MultiPolygon)
-        """
-        if hasattr(dggrid_result, 'geometry') and hasattr(dggrid_result.geometry, 'iloc'):
-            # It's a GeoDataFrame, extract the first geometry
-            if len(dggrid_result) > 0:
-                return dggrid_result.geometry.iloc[0]
-            else:
-                return Polygon()
-        elif hasattr(dggrid_result, 'geom_type'):
-            # It's already a Shapely geometry object
-            return dggrid_result
-        else:
-            # Fallback - return empty polygon
-            return Polygon()
 
     # # Private methods
     def _apply_index_assign(
