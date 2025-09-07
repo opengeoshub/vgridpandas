@@ -109,6 +109,12 @@ class DGGRIDPandas:
             When an invalid DGGRID id is encountered
         """
 
+        # Handle case where resolution is passed as positional argument instead of dggrid_column
+        if dggrid_column is not None and isinstance(dggrid_column, int):
+            # If dggrid_column is an integer, it's actually the resolution parameter
+            resolution = dggrid_column
+            dggrid_column = None
+
         if dggrid_column is not None:
             # DGGRID ids are in the specified column
             if dggrid_column not in self._df.columns:
@@ -361,7 +367,7 @@ class DGGRIDPandas:
         # Add geometry if requested
         result = result.set_index(dggrid_column)
         if return_geometry:
-            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, resolution, address_type)              
+            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, dggrid_column=None, resolution=resolution, address_type=address_type)              
         return result.reset_index()
 
     def _dggrid_ids_to_geometries(
