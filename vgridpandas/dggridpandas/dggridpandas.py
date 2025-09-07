@@ -75,7 +75,7 @@ class DGGRIDPandas:
             for lat, lon in zip(lats, lons)
         ]
 
-        dggrid_column = f"dggrid_{dggs_type}_{address_type}"
+        dggrid_column = f"dggrid_{dggs_type}"
         assign_arg = {dggrid_column: dggrid_ids, f"{dggrid_column}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
@@ -125,9 +125,9 @@ class DGGRIDPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            if f"dggrid_{dggs_type}_{address_type}" in self._df.columns:
+            if f"dggrid_{dggs_type}" in self._df.columns:
                 # A5 hexes are in the 'a5' column
-                dggrid_ids = self._df[f"dggrid_{dggs_type}_{address_type}"]
+                dggrid_ids = self._df[f"dggrid_{dggs_type}"]
 
                 # Handle both single hexes and lists of hexes
                 geometries = self._dggrid_ids_to_geometries(
@@ -233,7 +233,7 @@ class DGGRIDPandas:
             If True, return a GeoDataFrame with DGGRID cell geometry
         """
         # Validate inputs and prepare data
-        dggrid_column = f"dggrid_{dggs_type}_{address_type}"
+        dggrid_column = f"dggrid_{dggs_type}"
         df = self.latlon2dggrid(
             dggrid_instance,
             dggs_type,
