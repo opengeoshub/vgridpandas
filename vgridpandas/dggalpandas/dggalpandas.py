@@ -103,7 +103,7 @@ class DGGALPandas:
             dggal_ids = self._df[dggal_column]
 
             # Handle both single dggal_ids and lists of dggal_ids
-            geometries = self._dggal_ids_to_geometries(dggal_ids, dggs_type)
+            geometries = self._dggal_ids_to_geometries(dggs_type, dggal_ids)    
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
@@ -115,7 +115,7 @@ class DGGALPandas:
                 dggal_ids = self._df[f"dggal_{dggs_type}"]
 
                 # Handle both single hexes and lists of hexes
-                geometries = self._dggal_ids_to_geometries(dggal_ids, dggs_type)
+                geometries = self._dggal_ids_to_geometries(dggs_type, dggal_ids)
 
                 result_df = self._df.copy()
                 result_df["geometry"] = geometries
@@ -323,7 +323,7 @@ class DGGALPandas:
             result = result.dggal.dggal2geo(dggs_type)
         return result.reset_index()
 
-    def _dggal_ids_to_geometries(self, dggal_ids, dggs_type) -> list:
+    def _dggal_ids_to_geometries(self, dggs_type, dggal_ids) -> list:
         """Helper method to process dggal IDs into geometries.
 
         Parameters

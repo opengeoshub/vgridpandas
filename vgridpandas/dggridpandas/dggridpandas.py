@@ -131,7 +131,7 @@ class DGGRIDPandas:
 
                 # Handle both single hexes and lists of hexes
                 geometries = self._dggrid_ids_to_geometries(
-                    dggrid_instance, dggs_type, dggrid_ids, resolution, address_type
+                    dggrid_instance, dggs_type, dggrid_ids, resolution, address_type,
                 )
 
                 result_df = self._df.copy()
@@ -361,11 +361,11 @@ class DGGRIDPandas:
         # Add geometry if requested
         result = result.set_index(dggrid_column)
         if return_geometry:
-            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, resolution,address_type)              
+            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, resolution, address_type)              
         return result.reset_index()
 
     def _dggrid_ids_to_geometries(
-        self, dggrid_instance, dggs_type, dggrid_ids, resolution, address_type
+        self, dggrid_instance, dggs_type, dggrid_ids,resolution, address_type
     ) -> list:
         """Helper method to process dggrid IDs into geometries.
 
