@@ -3,13 +3,14 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.utils.io import validate_geohash_resolution
 from vgrid.conversion.dggscompact.geohashcompact import geohash_compact
 from vgrid.conversion.dggs2geo.geohash2geo import geohash2geo as geohash_to_geo
-from vgrid.generator.geohashgrid import  expand_geohash_bbox
-from vgrid.generator.settings import INITIAL_GEOHASHES      
-from vgridpandas.utils.geom import check_predicate
+from vgrid.generator.geohashgrid import expand_geohash_bbox
+from vgrid.utils.constants import INITIAL_GEOHASHES
+from vgrid.utils.geometry import check_predicate
 
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+
 
 def poly2geohash(
     geometry: MultiPolyOrPoly,
@@ -88,6 +89,8 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2geohash(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2geohash(geometry, resolution, predicate="intersect", compact=False))
+        return set(
+            poly2geohash(geometry, resolution, predicate="intersect", compact=False)
+        )
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

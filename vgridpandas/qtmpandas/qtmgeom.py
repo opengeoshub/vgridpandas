@@ -1,8 +1,8 @@
-from typing import Union, Set, Iterator
-from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString, box
-from vgrid.dggs.qtm import constructGeometry, qtm_id_to_facet, divideFacet
+from typing import Union, Set
+from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
+from vgrid.dggs.qtm import constructGeometry, divideFacet
 from vgrid.utils.io import validate_qtm_resolution
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggscompact.qtmcompact import qtm_compact
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
@@ -32,17 +32,23 @@ n90_n180, n90_n90, n90_p0, n90_p90, n90_p180 = (
 
 
 initial_facets = [
-                    [p0_n180, p0_n90, p90_n90, p90_n180, p0_n180, True],
-                    [p0_n90, p0_p0, p90_p0, p90_n90, p0_n90, True],
-                    [p0_p0, p0_p90, p90_p90, p90_p0, p0_p0, True],
-                    [p0_p90, p0_p180, p90_p180, p90_p90, p0_p90, True],
-                    [n90_n180, n90_n90, p0_n90, p0_n180, n90_n180, False],
-                    [n90_n90, n90_p0, p0_p0, p0_n90, n90_n90, False],
-                    [n90_p0, n90_p90, p0_p90, p0_p0, n90_p0, False],
-                    [n90_p90, n90_p180, p0_p180, p0_p90, n90_p90, False],
-                ]
+    [p0_n180, p0_n90, p90_n90, p90_n180, p0_n180, True],
+    [p0_n90, p0_p0, p90_p0, p90_n90, p0_n90, True],
+    [p0_p0, p0_p90, p90_p90, p90_p0, p0_p0, True],
+    [p0_p90, p0_p180, p90_p180, p90_p90, p0_p90, True],
+    [n90_n180, n90_n90, p0_n90, p0_n180, n90_n180, False],
+    [n90_n90, n90_p0, p0_p0, p0_n90, n90_n90, False],
+    [n90_p0, n90_p90, p0_p90, p0_p0, n90_p0, False],
+    [n90_p90, n90_p180, p0_p180, p0_p90, n90_p90, False],
+]
 
-def poly2qtm(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
+
+def poly2qtm(
+    geometry: MultiPolyOrPoly,
+    resolution: int,
+    predicate: str = None,
+    compact: bool = False,
+) -> Set[str]:
     """
     Convert polygon geometries (Polygon, MultiPolygon) to QTM cells.
 
@@ -77,7 +83,7 @@ def poly2qtm(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, 
         for lvl in range(resolution):
             level_facets[lvl] = []
             QTMID[lvl] = []
-            if lvl == 0:               
+            if lvl == 0:
                 for i, facet in enumerate(initial_facets):
                     QTMID[0].append(str(i + 1))
                     level_facets[0].append(facet)
@@ -105,6 +111,7 @@ def poly2qtm(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, 
         return qtm_compact(qtm_ids)
     return qtm_ids
 
+
 def polyfill(
     geometry: MultiPolyOrPoly,
     resolution: int,
@@ -127,10 +134,10 @@ def polyfill(
     ------
     TypeError if geometry is not a Polygon or MultiPolygon
     """
+    resolution = validate_qtm_resolution(resolution)
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2qtm(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2qtm(geometry, resolution, predicate='intersect', compact=False))
+        return set(poly2qtm(geometry, resolution, predicate="intersect", compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-

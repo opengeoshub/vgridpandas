@@ -4,7 +4,7 @@ from shapely.ops import transform
 import h3
 from vgridpandas.utils.decorator import sequential_deduplication
 from vgrid.utils.geometry import fix_h3_antimeridian_cells
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggs2geo.h32geo import h32geo
 from vgrid.utils.geometry import geodesic_buffer
 
@@ -47,7 +47,7 @@ def poly2h3(geometry, resolution, predicate=None, compact=False):
         bbox_buffer_cells = h3.geo_to_cells(bbox_buffer, resolution)
         if compact:
             bbox_buffer_cells = h3.compact_cells(bbox_buffer_cells)
-            
+
         for bbox_buffer_cell in bbox_buffer_cells:
             cell_polygon = h32geo(bbox_buffer_cell)
             if not check_predicate(cell_polygon, poly, predicate):
@@ -55,6 +55,7 @@ def poly2h3(geometry, resolution, predicate=None, compact=False):
             h3_ids.append(bbox_buffer_cell)
 
     return h3_ids
+
 
 def polyfill(
     geometry: Union[MultiPolyOrPoly, MultiLineOrLine],
@@ -86,7 +87,7 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2h3(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2h3(geometry, resolution, predicate='intersect', compact=False))
+        return set(poly2h3(geometry, resolution, predicate="intersect", compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
 
@@ -183,5 +184,3 @@ def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
             yield from h3.grid_path_cells(a, b)  # inclusive of a and b
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-
-

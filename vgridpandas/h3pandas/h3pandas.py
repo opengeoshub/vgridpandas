@@ -15,7 +15,13 @@ from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from vgridpandas.h3pandas.h3geom import (
+    cell_to_boundary_lng_lat,
+    polyfill,
+    linetrace,
+    _switch_lat_lng,
+)
+from vgrid.utils.io import validate_h3_resolution
 from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -34,7 +40,7 @@ class H3Pandas:
         resolution: int,
         lat_col: str = "lat",
         lng_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds H3 index to (Geo)DataFrame.
 
@@ -85,9 +91,7 @@ class H3Pandas:
         881e2659c3fffff    1  POINT (15.00000 51.00000)
 
         """
-        if not isinstance(resolution, int) or resolution not in range(0, 16):
-            raise ValueError("Resolution must be an integer in range [0, 15]")
-
+        resolution = validate_h3_resolution(resolution)
         if isinstance(self._df, gpd.GeoDataFrame):
             lngs = self._df.geometry.x
             lats = self._df.geometry.y
@@ -101,7 +105,7 @@ class H3Pandas:
 
         # h3_column = self._format_resolution(resolution)
         h3_column = "h3"
-        assign_arg = {h3_column: h3_id, "h3_res": resolution}   
+        assign_arg = {h3_column: h3_id, "h3_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
             return df.set_index(h3_column)
@@ -187,7 +191,9 @@ class H3Pandas:
                             # Handle empty list - create empty geometry
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
+                            cell_geometries = [
+                                cell_to_boundary_lng_lat(token) for token in tokens
+                            ]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Handle single token
@@ -197,7 +203,9 @@ class H3Pandas:
                         if len(tokens) == 0:
                             geometries.append(Polygon())
                         else:
-                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
+                            cell_geometries = [
+                                cell_to_boundary_lng_lat(token) for token in tokens
+                            ]
                             geometries.append(MultiPolygon(cell_geometries))
                     else:
                         # Try to handle as single token
@@ -208,7 +216,7 @@ class H3Pandas:
                             geometries.append(Polygon())
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
@@ -258,9 +266,13 @@ class H3Pandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [h3_column]
@@ -271,23 +283,25 @@ class H3Pandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -303,20 +317,38 @@ class H3Pandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([h3_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=h3_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([h3_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=h3_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [h3_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [h3_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([h3_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([h3_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -326,10 +358,12 @@ class H3Pandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=h3_column, columns=category_column, values=stats)
+                    result = result.pivot(
+                        index=h3_column, columns=category_column, values=stats
+                    )
                     result = result.fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [h3_column]
                     for col in sorted(result.columns[1:]):
@@ -389,9 +423,7 @@ class H3Pandas:
         """
         return self._apply_index_assign(h3.is_valid_cell, "h3_is_valid")
 
-    @doc_standard(
-        "h3_k_ring", "containing a list H3 ID within a distance of `k`"
-    )
+    @doc_standard("h3_k_ring", "containing a list H3 ID within a distance of `k`")
     def k_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
         """
         Parameters
@@ -442,8 +474,7 @@ class H3Pandas:
 
     @doc_standard(
         "h3_hex_ring",
-        "containing a list H3 ID forming a hollow hexagonal ring"
-        "at a distance `k`",
+        "containing a list H3 ID forming a hollow hexagonal ringat a distance `k`",
     )
     def hex_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
         """
@@ -544,11 +575,11 @@ class H3Pandas:
         "containing a list H3 ID whose centroid falls into the Polygon",
     )
     def polyfill(
-        self, 
-        resolution: int, 
+        self,
+        resolution: int,
         explode: bool = False,
         predicate: str = None,
-        compact: bool = False
+        compact: bool = False,
     ) -> AnyDataFrame:
         """
         Parameters
@@ -562,7 +593,7 @@ class H3Pandas:
         predicate : str, optional
             Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
         compact : bool, optional
-            Enable H3 compact mode      
+            Enable H3 compact mode
         """
 
         def func(row):
@@ -976,7 +1007,6 @@ class H3Pandas:
 
         result = result.explode().to_frame(COLUMN_H3_LINETRACE)
         return df.join(result)
-
 
     def _apply_index_assign(
         self,

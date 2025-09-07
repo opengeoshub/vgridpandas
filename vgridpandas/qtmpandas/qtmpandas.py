@@ -1,17 +1,16 @@
-from typing import Union, Callable, Any,Literal
+from typing import Union, Callable, Any
 from collections import Counter
 from shapely.geometry import Polygon, MultiPolygon
 import pandas as pd
 import geopandas as gpd
 
-from vgrid.dggs import qtm
+from vgrid.conversion.latlon2dggs import latlon2qtm as latlon_to_qtm
+from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.qtmpandas.qtmgeom import polyfill
-from vgrid.utils.io import validate_qtm_resolution
-from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_QTM_POLYFILL
 
@@ -31,7 +30,7 @@ class QTMPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds qtm ID to (Geo)DataFrame.
 
@@ -53,10 +52,8 @@ class QTMPandas:
 
         Returns
         -------
-        (Geo)DataFrame with QTM IDs added     
+        (Geo)DataFrame with QTM IDs added
         """
-
-        resolution = validate_qtm_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -66,7 +63,8 @@ class QTMPandas:
             lats = self._df[lat_col]
 
         qtm_ids = [
-            qtm.latlon_to_qtm_id(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_qtm(lat, lon, resolution=resolution)
+            for lat, lon in zip(lats, lons)
         ]
 
         # qtm_column = self._format_resolution(resolution)
@@ -135,7 +133,7 @@ class QTMPandas:
                             geometries.append(Polygon())
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
@@ -146,7 +144,13 @@ class QTMPandas:
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
 
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -159,9 +163,9 @@ class QTMPandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
-        resolution = validate_qtm_resolution(resolution)
+
         def func(row):
             return list(polyfill(row.geometry, resolution, predicate, compact))
 
@@ -208,7 +212,6 @@ class QTMPandas:
             If True, return a GeoDataFrame with qtm cell geometry
         """
         # Validate inputs and prepare data
-        resolution = validate_qtm_resolution(resolution)
         # qtm_column = self._format_resolution(resolution)
         qtm_column = "qtm"
         df = self.latlon2qtm(resolution, lat_col, lon_col, False)
@@ -217,9 +220,13 @@ class QTMPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [qtm_column]
@@ -230,23 +237,25 @@ class QTMPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -262,20 +271,38 @@ class QTMPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([qtm_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=qtm_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([qtm_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=qtm_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [qtm_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [qtm_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([qtm_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([qtm_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -285,10 +312,12 @@ class QTMPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=qtm_column, columns=category_column, values=stats)
+                    result = result.pivot(
+                        index=qtm_column, columns=category_column, values=stats
+                    )
                     result = result.fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [qtm_column]
                     for col in sorted(result.columns[1:]):
@@ -306,7 +335,6 @@ class QTMPandas:
         if return_geometry:
             result = result.qtm.qtm2geo()
         return result.reset_index()
-
 
     def _apply_index_assign(
         self,
@@ -338,7 +366,6 @@ class QTMPandas:
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
-    
     def _apply_index_explode(
         self,
         func: Callable,

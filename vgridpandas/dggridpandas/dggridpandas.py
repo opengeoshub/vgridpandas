@@ -1,37 +1,38 @@
-from typing import Union, Callable, Any
+"""S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
+
 from collections import Counter
-from shapely.geometry import Polygon, MultiPolygon
+from typing import Union, Any, Callable
+from shapely.geometry import MultiPolygon, Polygon
 import pandas as pd
 import geopandas as gpd
-
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-
-from vgridpandas.utils.functools import wrapped_partial
+from vgrid.conversion.latlon2dggs import latlon2dggrid as latlon_to_dggrid
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
-
-from vgrid.conversion.latlon2dggs import latlon2georef as latlon_to_georef
-from vgrid.conversion.dggs2geo.georef2geo import georef2geo as georef_to_geo            
+from vgridpandas.utils.functools import wrapped_partial
+from vgridpandas.dggridpandas.dggridgeom import polyfill
+from vgrid.conversion.dggs2geo.dggrid2geo import dggrid2geo as dggrid_to_geo
+from vgrid.utils.constants import DGGRID_TYPES
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
-@pd.api.extensions.register_dataframe_accessor("georef")
-class GEOREFPandas:
+@pd.api.extensions.register_dataframe_accessor("dggrid")
+class DGGALPandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
-    # georef API
-    # These methods simply mirror the Vgrid georef API and apply georef functions to all rows
-
-    def latlon2georef(
+    def latlon2dggrid(
         self,
+        dggrid_instance,
+        dggs_type: str,
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
         set_index: bool = False,
+        address_type: str = "SEQNUM",
     ) -> AnyDataFrame:
-        """Adds georef ID to (Geo)DataFrame.
+        """Adds DGGAL id to (Geo)DataFrame.
 
         pd.DataFrame: uses `lat_col` and `lon_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
@@ -40,19 +41,26 @@ class GEOREFPandas:
 
         Parameters
         ----------
+        dggrid_instance : DGGRIDv7
+            DGGRID instance
+        dggs_type : str
+            DGGAL type
         resolution : int
-            georef resolution
+            DGGAL resolution
         lat_col : str
             Name of the latitude column (if used), default 'lat'
         lon_col : str
             Name of the longitude column (if used), default 'lon'
         set_index : bool
-            If True, the columns with georef ID is set as index, default 'True'
-
+            If True, the columns with DGGAL id is set as index, default 'True'
+        address_type : str
+            Address type, default 'SEQNUM'
         Returns
         -------
-        (Geo)DataFrame with georef IDs added
+        (Geo)DataFrame with DGGAL ids added
+
         """
+
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
             lats = self._df.geometry.y
@@ -60,59 +68,139 @@ class GEOREFPandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        georef_ids = [
-            latlon_to_georef(lat, lon, resolution) for lat, lon in zip(lats, lons)
+        dggrid_ids = [
+            latlon_to_dggrid(
+                dggrid_instance, dggs_type, lat, lon, resolution, address_type
+            )
+            for lat, lon in zip(lats, lons)
         ]
 
-        # georef_column = self._format_resolution(resolution)
-        georef_column = "georef"
-        assign_arg = {georef_column: georef_ids, "georef_res": resolution}
+        dggrid_column = f"dggrid_{dggs_type}_{address_type}"
+        assign_arg = {dggrid_column: dggrid_ids, f"{dggrid_column}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(georef_column)
+            return df.set_index(dggrid_column)
         return df
 
-    def georef2geo(self, georef_column: str = None) -> GeoDataFrame:
-        """Add geometry with GEOREF geometry to the DataFrame. Assumes GEOREF ID.
+    def dggrid2geo(
+        self,
+        dggrid_instance,
+        dggs_type: str,
+        address_type: str = "SEQNUM",
+        dggrid_column: str = None,
+    ) -> GeoDataFrame:
+        """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
 
         Parameters
         ----------
-        georef_column : str, optional
-            Name of the column containing GEOREF. If None, assumes georef georef_ids are in the index.
-
+        dggrid_column : str, optional
+            Name of the column containing DGGRID ids. If None, assumes DGGRID ids are in the index.
+        address_type : str
+            Address type, default 'SEQNUM'
         Returns
         -------
-        GeoDataFrame with GEOREF geometry
+        GeoDataFrame with DGGRID geometry ids
 
         Raises
         ------
         ValueError
-            When an invalid GEOREF ID is encountered
+            When an invalid DGGRID id is encountered
         """
 
-        if georef_column is not None:
-            # georef georef_ids are in the specified column
-            if georef_column not in self._df.columns:
-                raise ValueError(f"Column '{georef_column}' not found in DataFrame")
-            georef_ids = self._df[georef_column]
+        if dggrid_column is not None:
+            # DGGRID ids are in the specified column
+            dggs_class_name = DGGRID_TYPES[dggs_type]["class_name"]
+            dggrs = globals()[dggs_class_name]()
+            if dggrid_column not in self._df.columns:
+                raise ValueError(f"Column '{dggrid_column}' not found in DataFrame")
+            dggrid_ids = self._df[dggrid_column]
 
-            # Handle both single georef_ids and lists of georef_ids
-            geometries = self._georef_ids_to_geometries(georef_ids)
+            # Handle both single dggrid_ids and lists of dggrid_ids
+            geometries = self._dggrid_ids_to_geometries(
+                dggrid_instance, dggs_type, dggrid_ids, address_type
+            )
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # GEOREF IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(georef_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+            if f"dggrid_{dggs_type}_{address_type}" in self._df.columns:
+                # A5 hexes are in the 'a5' column
+                dggrid_ids = self._df[f"dggrid_{dggs_type}_{address_type}"]
+
+                # Handle both single hexes and lists of hexes
+                geometries = self._dggrid_ids_to_geometries(
+                    dggrid_instance, dggs_type, dggrid_ids, address_type
+                )
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # DGGRID ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(
+                        dggrid_instance, dggs_type, dggrid_to_geo, address_type
+                    ),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def polyfill(
+        self,
+        dggrid_instance,
+        dggs_type: str,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+        address_type: str = "SEQNUM",
+    ) -> AnyDataFrame:
+        """
+        Parameters
+        ----------
+        resolution : int
+            DGGRID resolution
+        predicate : str, optional
+            Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
+        compact : bool, optional
+            Whether to compact the DGGRID ids
+        explode : bool
+            If True, will explode the resulting list vertically.
+            All other columns' values are copied.
+            Default: False
+        address_type : str
+            Address type, default 'SEQNUM'
+        """
+
+        def func(row):
+            return list(
+                polyfill(
+                    dggrid_instance,
+                    dggs_type,
+                    row.geometry,
+                    resolution,
+                    predicate,
+                    compact,
+                    address_type,
+                )
             )
 
-    def georefbin(
+        result = self._df.apply(func, axis=1)
+
+        if not explode:
+            assign_args = {f"dggrid_{dggs_type}": result}
+            return self._df.assign(**assign_args)
+
+        result = result.explode().to_frame(f"dggrid_{dggs_type}")
+
+        return self._df.join(result)
+
+    def dggridbin(
         self,
+        dggrid_instance,
+        dggs_type: str,
         resolution: int,
         stats: str = "count",
         numeric_column: str = None,
@@ -120,16 +208,17 @@ class GEOREFPandas:
         lat_col: str = "lat",
         lon_col: str = "lon",
         return_geometry: bool = True,
+        address_type: str = "SEQNUM",
     ) -> DataFrame:
         """
-        Bin points into georef cells and compute statistics, optionally grouped by a category column.
+        Bin points into DGGRID cells and compute statistics, optionally grouped by a category column.
 
         Supports both GeoDataFrame (with point geometry) and DataFrame (with lat/lon columns).
 
         Parameters
         ----------
         resolution : int
-            georef resolution
+            DGGRID resolution
         stats : str
             Statistic to compute: count, sum, min, max, mean, median, std, var, range, minority, majority, variety
         numeric_column : str, optional
@@ -141,12 +230,19 @@ class GEOREFPandas:
         lon_col : str, optional
             Name of the longitude column (only used for DataFrame input, ignored for GeoDataFrame)
         return_geometry : bool
-            If True, return a GeoDataFrame with georef cell geometry
+            If True, return a GeoDataFrame with DGGRID cell geometry
         """
         # Validate inputs and prepare data
-        # georef_column = self._format_resolution(resolution)
-        georef_column = "georef"
-        df = self.latlon2georef(resolution, lat_col, lon_col, False)
+        dggrid_column = f"dggrid_{dggs_type}_{address_type}"
+        df = self.latlon2dggrid(
+            dggrid_instance,
+            dggs_type,
+            resolution,
+            lat_col,
+            lon_col,
+            False,
+            address_type,
+        )
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
@@ -159,7 +255,7 @@ class GEOREFPandas:
             )
 
         # Prepare grouping columns
-        group_cols = [georef_column]
+        group_cols = [dggrid_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -205,24 +301,24 @@ class GEOREFPandas:
                     [str(cat) for cat in df[category_column].unique()]
                 )
                 result = (
-                    df.groupby([georef_column, category_column])
+                    df.groupby([dggrid_column, category_column])
                     .apply(cat_agg_func, include_groups=False)
                     .reset_index(name=stats)
                 )
                 result = result.pivot(
-                    index=georef_column, columns=category_column, values=stats
+                    index=dggrid_column, columns=category_column, values=stats
                 )
                 result = result.reindex(
                     columns=all_categories, fill_value=0 if stats == "variety" else None
                 )
                 result = result.reset_index()
-                result.columns = [georef_column] + [
+                result.columns = [dggrid_column] + [
                     f"{cat}_{stats}" for cat in all_categories
                 ]
             else:
                 # Handle categorical aggregation without category grouping
                 result = (
-                    df.groupby([georef_column])
+                    df.groupby([dggrid_column])
                     .apply(cat_agg_func, include_groups=False)
                     .reset_index(name=stats)
                 )
@@ -238,18 +334,18 @@ class GEOREFPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[georef_column, category_column, stats])
+                result = pd.DataFrame(columns=[dggrid_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
                     result = result.pivot(
-                        index=georef_column, columns=category_column, values=stats
+                        index=dggrid_column, columns=category_column, values=stats
                     )
                     result = result.fillna(0)
                     result = result.reset_index()
 
                     # Rename columns with category prefixes
-                    new_columns = [georef_column]
+                    new_columns = [dggrid_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -258,14 +354,79 @@ class GEOREFPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(georef_column).size().reset_index(name=stats)
+                    result = df.groupby(dggrid_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(georef_column)
+        result = result.set_index(dggrid_column)
         if return_geometry:
-            result = result.georef.georef2geo()
+            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, address_type)
         return result.reset_index()
 
+    def _dggrid_ids_to_geometries(
+        self, dggrid_instance, dggs_type, dggrid_ids, address_type
+    ) -> list:
+        """Helper method to process dggrid IDs into geometries.
+
+        Parameters
+        ----------
+        dggrid_instance : DGGRIDv7
+            DGGRID instance
+        dggrid_ids : pandas.Series or list
+            DGGRID IDs to process
+        dggs_type : str
+            DGGRID type for geometry conversion
+        address_type : str
+            Address type, default 'SEQNUM'
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for ids in dggrid_ids:
+            try:
+                if pd.isna(ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(ids, list):
+                    # Handle list of dggrid_ids - create a MultiPolygon
+                    if len(ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, address_type)
+                            for id in ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single dggrid_id
+                    geometries.append(
+                        dggrid_to_geo(dggrid_instance, dggs_type, ids, address_type)
+                    )
+            except (ValueError, TypeError):
+                if isinstance(ids, list):
+                    if len(ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, address_type)
+                            for id in ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single dggrid_id
+                    try:
+                        geometries.append(
+                            dggrid_to_geo(dggrid_instance, dggs_type, ids, address_type)
+                        )
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
+
+    # # Private methods
     def _apply_index_assign(
         self,
         func: Callable,
@@ -278,7 +439,7 @@ class GEOREFPandas:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each S2 Token
+            single-argument function to be applied to each DGGRID ID
         column_name : str
             name of the resulting column
         processor : Callable
@@ -292,7 +453,7 @@ class GEOREFPandas:
         If using `finalizer`, can return anything the `finalizer` returns.
         """
         func = catch_invalid_dggs_id(func)
-        result = [processor(func(georef_id)) for georef_id in self._df.index]
+        result = [processor(func(dggrid_id)) for dggrid_id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
@@ -310,7 +471,7 @@ class GEOREFPandas:
         Parameters
         ----------
         func : Callable
-            single-argument function to be applied to each S2 Token
+            single-argument function to be applied to each DGGRID ID
         column_name : str
             name of the resulting column
         processor : Callable
@@ -326,7 +487,7 @@ class GEOREFPandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {georef_id: processor(func(georef_id)) for georef_id in self._df.index},
+                {dggrid_id: processor(func(dggrid_id)) for dggrid_id in self._df.index},
                 orient="index",
             )
             .stack()
@@ -335,53 +496,3 @@ class GEOREFPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
-
-    def _georef_ids_to_geometries(self, georef_ids) -> list:
-        """Helper method to process georef IDs into geometries.
-
-        Parameters
-        ----------
-        georef_ids : pandas.Series or list
-            Georef IDs to process
-
-        Returns
-        -------
-        list
-            List of geometries (Polygon or MultiPolygon objects)
-        """
-        geometries = []
-        for gh_ids in georef_ids:
-            try:
-                if pd.isna(gh_ids):
-                    # Handle NaN values - create empty geometry
-                    geometries.append(Polygon())
-                elif isinstance(gh_ids, list):
-                    # Handle list of georef_ids - create a MultiPolygon
-                    if len(gh_ids) == 0:
-                        # Handle empty list - create empty geometry
-                        geometries.append(Polygon())
-                    else:
-                        cell_geometries = [georef_to_geo(gh_id) for gh_id in gh_ids]
-                        geometries.append(MultiPolygon(cell_geometries))
-                else:
-                    # Handle single georef_id
-                    geometries.append(georef_to_geo(gh_ids))
-            except (ValueError, TypeError):
-                if isinstance(gh_ids, list):
-                    if len(gh_ids) == 0:
-                        geometries.append(Polygon())
-                    else:
-                        cell_geometries = [georef_to_geo(gh_id) for gh_id in gh_ids]
-                        geometries.append(MultiPolygon(cell_geometries))
-                else:
-                    # Try to handle as single georef_id
-                    try:
-                        geometries.append(georef_to_geo(gh_ids))
-                    except Exception:
-                        # If all else fails, create empty geometry
-                        geometries.append(Polygon())
-        return geometries
-
-    @staticmethod
-    def _format_resolution(resolution: int) -> str:
-        return f"georef_{str(resolution).zfill(2)}"

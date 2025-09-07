@@ -4,14 +4,13 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon, MultiPolygon
 
-from vgrid.conversion.latlon2dggs import latlon2quadkey
+from vgrid.conversion.latlon2dggs import latlon2quadkey as latlon_to_quadkey
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.quadkeypandas.quadkeygeom import polyfill
-from vgrid.utils.io import validate_quadkey_resolution
-from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo
+from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo     
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_QUADKEY_POLYFILL
 
@@ -31,7 +30,7 @@ class QuadkeyPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds quadkey ID to (Geo)DataFrame.
 
@@ -53,10 +52,8 @@ class QuadkeyPandas:
 
         Returns
         -------
-        (Geo)DataFrame with quadkey IDs added     
+        (Geo)DataFrame with quadkey IDs added
         """
-
-        resolution = validate_quadkey_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -66,14 +63,14 @@ class QuadkeyPandas:
             lats = self._df[lat_col]
 
         quadkey_ids = [
-            latlon2quadkey(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_quadkey(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # tilecode_column = self._format_resolution(resolution)
         tilecode_column = "quadkey"
         assign_arg = {tilecode_column: quadkey_ids, "quadkey_res": resolution}
         df = self._df.assign(**assign_arg)
-        if set_index:
+        if set_index:       
             return df.set_index(tilecode_column)
         return df
 
@@ -101,41 +98,11 @@ class QuadkeyPandas:
                 raise ValueError(f"Column '{quadkey_column}' not found in DataFrame")
             quadkey_ids = self._df[quadkey_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for tc_ids in quadkey_ids:
-                try:
-                    if pd.isna(tc_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(tc_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(tc_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(quadkey_to_geo(tc_ids))
-                except (ValueError, TypeError):
-                    if isinstance(tc_ids, list):
-                        if len(tc_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(quadkey_to_geo(tc_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single quadkey_ids and lists of quadkey_ids
+            geometries = self._quadkey_ids_to_geometries(quadkey_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
@@ -146,7 +113,13 @@ class QuadkeyPandas:
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
 
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -159,9 +132,9 @@ class QuadkeyPandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
-        resolution = validate_quadkey_resolution(resolution)
+
         def func(row):
             return list(polyfill(row.geometry, resolution, predicate, compact))
 
@@ -174,7 +147,6 @@ class QuadkeyPandas:
         result = result.explode().to_frame(COLUMN_QUADKEY_POLYFILL)
 
         return self._df.join(result)
-
 
     def quadkeybin(
         self,
@@ -215,9 +187,13 @@ class QuadkeyPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [tilecode_column]
@@ -228,23 +204,25 @@ class QuadkeyPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -260,20 +238,38 @@ class QuadkeyPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([tilecode_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([tilecode_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=tilecode_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [tilecode_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [tilecode_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([tilecode_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([tilecode_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -283,10 +279,12 @@ class QuadkeyPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
+                    result = result.pivot(
+                        index=tilecode_column, columns=category_column, values=stats
+                    )
                     result = result.fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [tilecode_column]
                     for col in sorted(result.columns[1:]):
@@ -304,7 +302,6 @@ class QuadkeyPandas:
         if return_geometry:
             result = result.quadkey.quadkey2geo()
         return result.reset_index()
-        
 
     def _apply_index_assign(
         self,
@@ -366,7 +363,10 @@ class QuadkeyPandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {quadkey_id: processor(func(quadkey_id)) for quadkey_id in self._df.index},
+                {
+                    quadkey_id: processor(func(quadkey_id))
+                    for quadkey_id in self._df.index
+                },
                 orient="index",
             )
             .stack()
@@ -375,6 +375,52 @@ class QuadkeyPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _quadkey_ids_to_geometries(self, quadkey_ids) -> list:
+        """Helper method to process quadkey IDs into geometries.
+
+        Parameters
+        ----------
+        quadkey_ids : pandas.Series or list
+            Quadkey IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for tc_ids in quadkey_ids:
+            try:
+                if pd.isna(tc_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(tc_ids, list):
+                    # Handle list of quadkey_ids - create a MultiPolygon
+                    if len(tc_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single quadkey_id
+                    geometries.append(quadkey_to_geo(tc_ids))
+            except (ValueError, TypeError):
+                if isinstance(tc_ids, list):
+                    if len(tc_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [quadkey_to_geo(tc_id) for tc_id in tc_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single quadkey_id
+                    try:
+                        geometries.append(quadkey_to_geo(tc_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

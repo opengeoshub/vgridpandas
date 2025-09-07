@@ -1,14 +1,13 @@
-from typing import Union, Callable,  Any
+from typing import Union, Callable, Any
 from collections import Counter
 from shapely.geometry import Polygon, MultiPolygon
-from vgrid.conversion.latlon2dggs import latlon2mgrs
+from vgrid.conversion.latlon2dggs import latlon2mgrs as latlon_to_mgrs
+from vgrid.conversion.dggs2geo.mgrs2geo import mgrs2geo as mgrs_to_geo
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 import pandas as pd
 import geopandas as gpd
 from vgridpandas.utils.functools import wrapped_partial
-from vgrid.utils.io import validate_mgrs_resolution
-from vgrid.conversion.dggs2geo.mgrs2geo import mgrs2geo as mgrs_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -27,7 +26,7 @@ class MGRSPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds MGRS ID to (Geo)DataFrame.
 
@@ -49,10 +48,8 @@ class MGRSPandas:
 
         Returns
         -------
-        (Geo)DataFrame with mgrs IDs added     
+        (Geo)DataFrame with mgrs IDs added
         """
-
-        resolution = validate_mgrs_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -62,7 +59,7 @@ class MGRSPandas:
             lats = self._df[lat_col]
 
         mgrs_ids = [
-            latlon2mgrs(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_mgrs(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # mgrs_column = self._format_resolution(resolution)
@@ -131,7 +128,7 @@ class MGRSPandas:
                             geometries.append(Polygon())
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
@@ -174,17 +171,18 @@ class MGRSPandas:
         return_geometry : bool
             If True, return a GeoDataFrame with mgrs cell geometry
         """
-        resolution = validate_mgrs_resolution(resolution)
-        # Validate inputs and prepare data
-        # mgrs_column = self._format_resolution(resolution)
         mgrs_column = "mgrs"
         df = self.latlon2mgrs(resolution, lat_col, lon_col, False)
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [mgrs_column]
@@ -195,23 +193,25 @@ class MGRSPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -227,20 +227,38 @@ class MGRSPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([mgrs_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=mgrs_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([mgrs_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=mgrs_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [mgrs_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [mgrs_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([mgrs_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([mgrs_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -250,10 +268,12 @@ class MGRSPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=mgrs_column, columns=category_column, values=stats)
+                    result = result.pivot(
+                        index=mgrs_column, columns=category_column, values=stats
+                    )
                     result = result.fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [mgrs_column]
                     for col in sorted(result.columns[1:]):

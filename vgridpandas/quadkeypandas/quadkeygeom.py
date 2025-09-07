@@ -1,12 +1,13 @@
 from typing import Union, Set
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.dggs import mercantile
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggscompact.quadkeycompact import quadkey_compact
 from vgrid.utils.io import validate_quadkey_resolution
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+
 
 def poly2quadkey(
     geometry: MultiPolyOrPoly,
@@ -33,7 +34,7 @@ def poly2quadkey(
         True
     """
 
-    resolution = validate_quadkey_resolution(resolution)    
+    resolution = validate_quadkey_resolution(resolution)
     if isinstance(geometry, (Polygon, LineString)):
         polys = [geometry]
     elif isinstance(geometry, (MultiPolygon, MultiLineString)):
@@ -94,6 +95,8 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2quadkey(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2quadkey(geometry, resolution, predicate="intersect", compact=False))
+        return set(
+            poly2quadkey(geometry, resolution, predicate="intersect", compact=False)
+        )
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

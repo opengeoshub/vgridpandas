@@ -3,18 +3,18 @@ from collections import Counter
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon, MultiPolygon
-from vgrid.conversion.latlon2dggs import latlon2olc
+from vgrid.conversion.latlon2dggs import latlon2olc as latlon_to_olc
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.olcpandas.olcgeom import polyfill
-from vgrid.utils.io import validate_olc_resolution
+
 from vgrid.conversion.dggs2geo.olc2geo import olc2geo as olc_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_OLC_POLYFILL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+
 
 @pd.api.extensions.register_dataframe_accessor("olc")
 class OLCPandas:
@@ -29,7 +29,7 @@ class OLCPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds OLC ID to (Geo)DataFrame.
 
@@ -51,10 +51,8 @@ class OLCPandas:
 
         Returns
         -------
-        (Geo)DataFrame with OLC IDs added     
+        (Geo)DataFrame with OLC IDs added
         """
-
-        resolution = validate_olc_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -63,9 +61,7 @@ class OLCPandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        olc_ids = [
-            latlon2olc(lat, lon, resolution) for lat, lon in zip(lats, lons)
-        ]
+        olc_ids = [latlon_to_olc(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
         # olc_column = self._format_resolution(resolution)
         olc_column = "olc"
@@ -133,7 +129,7 @@ class OLCPandas:
                             geometries.append(Polygon())
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
@@ -144,9 +140,13 @@ class OLCPandas:
                 finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
             )
 
-
-
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -159,7 +159,7 @@ class OLCPandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
 
         def func(row):
@@ -174,7 +174,6 @@ class OLCPandas:
         result = result.explode().to_frame(COLUMN_OLC_POLYFILL)
 
         return self._df.join(result)
-
 
     def olcbin(
         self,
@@ -215,9 +214,13 @@ class OLCPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [olc_column]
@@ -228,23 +231,25 @@ class OLCPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -260,20 +265,38 @@ class OLCPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([olc_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=olc_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([olc_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=olc_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [olc_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [olc_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([olc_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([olc_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -283,10 +306,12 @@ class OLCPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=olc_column, columns=category_column, values=stats)
+                    result = result.pivot(
+                        index=olc_column, columns=category_column, values=stats
+                    )
                     result = result.fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [olc_column]
                     for col in sorted(result.columns[1:]):
