@@ -18,7 +18,7 @@ AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
 @pd.api.extensions.register_dataframe_accessor("dggrid")
-class DGGALPandas:
+class DGGRIDPandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
@@ -32,7 +32,7 @@ class DGGALPandas:
         set_index: bool = False,
         address_type: str = "SEQNUM",
     ) -> AnyDataFrame:
-        """Adds DGGAL id to (Geo)DataFrame.
+        """Adds dggrid id to (Geo)DataFrame.
 
         pd.DataFrame: uses `lat_col` and `lon_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
@@ -44,20 +44,20 @@ class DGGALPandas:
         dggrid_instance : DGGRIDv7
             DGGRID instance
         dggs_type : str
-            DGGAL type
+            dggrid type
         resolution : int
-            DGGAL resolution
+            dggrid resolution
         lat_col : str
             Name of the latitude column (if used), default 'lat'
         lon_col : str
             Name of the longitude column (if used), default 'lon'
         set_index : bool
-            If True, the columns with DGGAL id is set as index, default 'True'
+            If True, the columns with dggrid id is set as index, default 'True'
         address_type : str
             Address type, default 'SEQNUM'
         Returns
         -------
-        (Geo)DataFrame with DGGAL ids added
+        (Geo)DataFrame with dggrid ids added
 
         """
 
