@@ -12,7 +12,6 @@ from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.dggridpandas.dggridgeom import polyfill
 from vgrid.conversion.dggs2geo.dggrid2geo import dggrid2geo as dggrid_to_geo
-from vgrid.utils.constants import DGGRID_TYPES
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -86,8 +85,8 @@ class DGGRIDPandas:
         self,
         dggrid_instance,
         dggs_type: str,
-        address_type: str = "SEQNUM",
         dggrid_column: str = None,
+        address_type: str = "SEQNUM",
     ) -> GeoDataFrame:
         """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
 
@@ -109,8 +108,6 @@ class DGGRIDPandas:
 
         if dggrid_column is not None:
             # DGGRID ids are in the specified column
-            dggs_class_name = DGGRID_TYPES[dggs_type]["class_name"]
-            dggrs = globals()[dggs_class_name]()
             if dggrid_column not in self._df.columns:
                 raise ValueError(f"Column '{dggrid_column}' not found in DataFrame")
             dggrid_ids = self._df[dggrid_column]
@@ -125,9 +122,9 @@ class DGGRIDPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            if f"dggrid_{dggs_type}" in self._df.columns:
+            if f"dggrid_{dggs_type.lower()}" in self._df.columns:
                 # A5 hexes are in the 'a5' column
-                dggrid_ids = self._df[f"dggrid_{dggs_type}"]
+                dggrid_ids = self._df[f"dggrid_{dggs_type.lower()}"]
 
                 # Handle both single hexes and lists of hexes
                 geometries = self._dggrid_ids_to_geometries(
@@ -190,10 +187,10 @@ class DGGRIDPandas:
         result = self._df.apply(func, axis=1)
 
         if not explode:
-            assign_args = {f"dggrid_{dggs_type}": result}
+            assign_args = {f"dggrid_{dggs_type.lower()}": result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(f"dggrid_{dggs_type}")
+        result = result.explode().to_frame(f"dggrid_{dggs_type.lower()}")   
 
         return self._df.join(result)
 
@@ -233,7 +230,7 @@ class DGGRIDPandas:
             If True, return a GeoDataFrame with DGGRID cell geometry
         """
         # Validate inputs and prepare data
-        dggrid_column = f"dggrid_{dggs_type}"
+        dggrid_column = f"dggrid_{dggs_type.lower()}"
         df = self.latlon2dggrid(
             dggrid_instance,
             dggs_type,
