@@ -360,32 +360,49 @@ class DGGRIDPandas:
                         # Handle empty list - create empty geometry
                         geometries.append(Polygon())
                     else:
-                        cell_geometries = [
-                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
-                            for id in ids
-                        ]
+                        cell_geometries = []
+                        for id in ids:
+                            gdf = dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
+                            # Extract geometry from GeoDataFrame
+                            if len(gdf) > 0:
+                                cell_geometries.append(gdf.geometry.iloc[0])
+                            else:
+                                cell_geometries.append(Polygon())
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Handle single dggrid_id
-                    geometries.append(
-                        dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
-                    )
+                    gdf = dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
+                    # Extract geometry from GeoDataFrame
+                    if len(gdf) > 0:
+                        geometries.append(gdf.geometry.iloc[0])
+                    else:
+                        geometries.append(Polygon())
             except (ValueError, TypeError):
                 if isinstance(ids, list):
                     if len(ids) == 0:
                         geometries.append(Polygon())
                     else:
-                        cell_geometries = [
-                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
-                            for id in ids
-                        ]
+                        cell_geometries = []
+                        for id in ids:
+                            try:
+                                gdf = dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
+                                # Extract geometry from GeoDataFrame
+                                if len(gdf) > 0:
+                                    cell_geometries.append(gdf.geometry.iloc[0])
+                                else:
+                                    cell_geometries.append(Polygon())
+                            except Exception:
+                                cell_geometries.append(Polygon())
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Try to handle as single dggrid_id
                     try:
-                        geometries.append(
-                            dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
-                        )
+                        gdf = dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
+                        # Extract geometry from GeoDataFrame
+                        if len(gdf) > 0:
+                            geometries.append(gdf.geometry.iloc[0])
+                        else:
+                            geometries.append(Polygon())
                     except Exception:
                         # If all else fails, create empty geometry
                         geometries.append(Polygon())
