@@ -138,7 +138,7 @@ class DGGRIDPandas:
                 # DGGRID ids are in the index
                 return self._apply_index_assign(
                     wrapped_partial(
-                        dggrid_instance, dggs_type, dggrid_to_geo, address_type
+                        dggrid_to_geo, dggrid_instance, dggs_type, address_type
                     ),
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
