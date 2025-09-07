@@ -86,6 +86,7 @@ class DGGRIDPandas:
         dggrid_instance,
         dggs_type: str,
         dggrid_column: str = None,
+        resolution: int = None,
         address_type: str = "SEQNUM",
     ) -> GeoDataFrame:
         """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
@@ -94,6 +95,8 @@ class DGGRIDPandas:
         ----------
         dggrid_column : str, optional
             Name of the column containing DGGRID ids. If None, assumes DGGRID ids are in the index.
+        resolution : int
+            DGGRID resolution
         address_type : str
             Address type, default 'SEQNUM'
         Returns
@@ -114,7 +117,7 @@ class DGGRIDPandas:
 
             # Handle both single dggrid_ids and lists of dggrid_ids
             geometries = self._dggrid_ids_to_geometries(
-                dggrid_instance, dggs_type, dggrid_ids, address_type
+                dggrid_instance, dggs_type, dggrid_ids, resolution, address_type
             )
 
             result_df = self._df.copy()
@@ -128,7 +131,7 @@ class DGGRIDPandas:
 
                 # Handle both single hexes and lists of hexes
                 geometries = self._dggrid_ids_to_geometries(
-                    dggrid_instance, dggs_type, dggrid_ids, address_type
+                    dggrid_instance, dggs_type, dggrid_ids, resolution, address_type
                 )
 
                 result_df = self._df.copy()
@@ -138,7 +141,7 @@ class DGGRIDPandas:
                 # DGGRID ids are in the index
                 return self._apply_index_assign(
                     wrapped_partial(
-                        dggrid_to_geo, dggrid_instance, dggs_type, address_type
+                        dggrid_to_geo, dggrid_instance, dggs_type, resolution, address_type
                     ),
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
@@ -358,11 +361,11 @@ class DGGRIDPandas:
         # Add geometry if requested
         result = result.set_index(dggrid_column)
         if return_geometry:
-            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, address_type)
+            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, resolution,address_type)              
         return result.reset_index()
 
     def _dggrid_ids_to_geometries(
-        self, dggrid_instance, dggs_type, dggrid_ids, address_type
+        self, dggrid_instance, dggs_type, dggrid_ids, resolution, address_type
     ) -> list:
         """Helper method to process dggrid IDs into geometries.
 
@@ -374,6 +377,8 @@ class DGGRIDPandas:
             DGGRID IDs to process
         dggs_type : str
             DGGRID type for geometry conversion
+        resolution : int
+            DGGRID resolution
         address_type : str
             Address type, default 'SEQNUM'
 
@@ -395,14 +400,14 @@ class DGGRIDPandas:
                         geometries.append(Polygon())
                     else:
                         cell_geometries = [
-                            dggrid_to_geo(dggrid_instance, dggs_type, id, address_type)
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
                             for id in ids
                         ]
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Handle single dggrid_id
                     geometries.append(
-                        dggrid_to_geo(dggrid_instance, dggs_type, ids, address_type)
+                        dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
                     )
             except (ValueError, TypeError):
                 if isinstance(ids, list):
@@ -410,7 +415,7 @@ class DGGRIDPandas:
                         geometries.append(Polygon())
                     else:
                         cell_geometries = [
-                            dggrid_to_geo(dggrid_instance, dggs_type, id, address_type)
+                            dggrid_to_geo(dggrid_instance, dggs_type, id, resolution, address_type)
                             for id in ids
                         ]
                         geometries.append(MultiPolygon(cell_geometries))
@@ -418,7 +423,7 @@ class DGGRIDPandas:
                     # Try to handle as single dggrid_id
                     try:
                         geometries.append(
-                            dggrid_to_geo(dggrid_instance, dggs_type, ids, address_type)
+                            dggrid_to_geo(dggrid_instance, dggs_type, ids, resolution, address_type)
                         )
                     except Exception:
                         # If all else fails, create empty geometry
