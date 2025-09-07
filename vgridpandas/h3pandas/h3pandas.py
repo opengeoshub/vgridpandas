@@ -151,7 +151,8 @@ class H3Pandas:
         Parameters
         ----------
         h3_column : str, optional
-            Name of the column containing H3 tokens. If None, assumes H3 tokens are in the index.
+            Name of the column containing H3 ids. If None, first checks for 'h3' column,
+            then assumes H3 ids are in the index.
 
         Returns
         -------
@@ -173,59 +174,87 @@ class H3Pandas:
         """
 
         if h3_column is not None:
-            # H3 tokens are in the specified column
+            # H3 ids are in the specified column
             if h3_column not in self._df.columns:
                 raise ValueError(f"Column '{h3_column}' not found in DataFrame")
-            h3_tokens = self._df[h3_column]
+            h3_ids = self._df[h3_column]
 
-            # Handle both single tokens and lists of tokens
-            geometries = []
-            for tokens in h3_tokens:
-                try:
-                    if pd.isna(tokens):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(tokens, list):
-                        # Handle list of tokens - create a MultiPolygon
-                        if len(tokens) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                cell_to_boundary_lng_lat(token) for token in tokens
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single token
-                        geometries.append(cell_to_boundary_lng_lat(tokens))
-                except (ValueError, TypeError):
-                    if isinstance(tokens, list):
-                        if len(tokens) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                cell_to_boundary_lng_lat(token) for token in tokens
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single token
-                        try:
-                            geometries.append(cell_to_boundary_lng_lat(tokens))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single ids and lists of ids
+            geometries = self._h3_hexes_to_geometries(h3_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # H3 tokens are in the index
-            return self._apply_index_assign(
-                wrapped_partial(cell_to_boundary_lng_lat),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'h3' column exists first
+            if "h3" in self._df.columns:
+                # H3 ids are in the 'h3' column
+                h3_ids = self._df["h3"]
+
+                # Handle both single ids and lists of ids
+                geometries = self._h3_hexes_to_geometries(h3_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # H3 ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(cell_to_boundary_lng_lat),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _h3_hexes_to_geometries(self, h3_hexes) -> list:
+        """Helper method to process H3 hexes into geometries.
+
+        Parameters
+        ----------
+        h3_hexes : pandas.Series or list
+            H3 hexes to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for hexes in h3_hexes:
+            try:
+                if pd.isna(hexes):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(hexes, list):
+                    # Handle list of hexes - create a MultiPolygon
+                    if len(hexes) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            cell_to_boundary_lng_lat(hex) for hex in hexes
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single hex
+                    geometries.append(cell_to_boundary_lng_lat(hexes))
+            except (ValueError, TypeError):
+                if isinstance(hexes, list):
+                    if len(hexes) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            cell_to_boundary_lng_lat(hex) for hex in hexes
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single hex
+                    try:
+                        geometries.append(cell_to_boundary_lng_lat(hexes))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     def h3bin(
         self,
@@ -362,7 +391,7 @@ class H3Pandas:
                         index=h3_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

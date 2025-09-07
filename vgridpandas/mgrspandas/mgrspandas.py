@@ -76,7 +76,8 @@ class MGRSPandas:
         Parameters
         ----------
         mgrs_column : str, optional
-            Name of the column containing MGRS. If None, assumes mgrs mgrs_ids are in the index.
+            Name of the column containing MGRS IDs. If None, first checks for 'mgrs' column,
+            then assumes MGRS IDs are in the index.
 
         Returns
         -------
@@ -95,49 +96,77 @@ class MGRSPandas:
             mgrs_ids = self._df[mgrs_column]
 
             # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for m_ids in mgrs_ids:
-                try:
-                    if pd.isna(m_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(m_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(m_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [mgrs_to_geo(m_id) for m_id in m_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(mgrs_to_geo(m_ids))
-                except (ValueError, TypeError):
-                    if isinstance(m_ids, list):
-                        if len(m_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [mgrs_to_geo(m_id) for m_id in m_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(mgrs_to_geo(m_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._mgrs_ids_to_geometries(mgrs_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # MGRS IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(mgrs_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'mgrs' column exists first
+            if "mgrs" in self._df.columns:
+                # MGRS IDs are in the 'mgrs' column
+                mgrs_ids = self._df["mgrs"]
+
+                # Handle both single 1_ids and lists of 1_ids
+                geometries = self._mgrs_ids_to_geometries(mgrs_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # MGRS IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(mgrs_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _mgrs_ids_to_geometries(self, mgrs_ids) -> list:
+        """Helper method to process MGRS IDs into geometries.
+
+        Parameters
+        ----------
+        mgrs_ids : pandas.Series or list
+            MGRS IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for m_ids in mgrs_ids:
+            try:
+                if pd.isna(m_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(m_ids, list):
+                    # Handle list of 1_ids - create a MultiPolygon
+                    if len(m_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [mgrs_to_geo(m_id) for m_id in m_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single id
+                    geometries.append(mgrs_to_geo(m_ids))
+            except (ValueError, TypeError):
+                if isinstance(m_ids, list):
+                    if len(m_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [mgrs_to_geo(m_id) for m_id in m_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single id
+                    try:
+                        geometries.append(mgrs_to_geo(m_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     def mgrsbin(
         self,
@@ -272,7 +301,7 @@ class MGRSPandas:
                         index=mgrs_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

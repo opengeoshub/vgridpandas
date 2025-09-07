@@ -4,7 +4,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon, MultiPolygon
 from vgrid.conversion.latlon2dggs import latlon2geohash as latlon_to_geohash
-from vgrid.conversion.dggs2geo.geohash2geo import geohash2geo as geohash_to_geo 
+from vgrid.conversion.dggs2geo.geohash2geo import geohash2geo as geohash_to_geo
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.functools import wrapped_partial
@@ -27,7 +27,7 @@ class GeohashPandas:
     def latlon2geohash(
         self,
         resolution: int,
-        lat_col: str = "lat",       
+        lat_col: str = "lat",
         lon_col: str = "lon",
         set_index: bool = False,
     ) -> AnyDataFrame:
@@ -79,7 +79,8 @@ class GeohashPandas:
         Parameters
         ----------
         geohash_column : str, optional
-            Name of the column containing Geohash. If None, assumes geohash geohash_ids are in the index.
+            Name of the column containing Geohash IDs. If None, first checks for 'geohash' column,
+            then assumes Geohash IDs are in the index.
 
         Returns
         -------
@@ -105,12 +106,24 @@ class GeohashPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Geohash IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(geohash_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'geohash' column exists first
+            if "geohash" in self._df.columns:
+                # Geohash IDs are in the 'geohash' column
+                geohash_ids = self._df["geohash"]
+
+                # Handle both single geohash_ids and lists of geohash_ids
+                geometries = self._geohash_ids_to_geometries(geohash_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Geohash IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(geohash_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def polyfill(
         self,
@@ -282,7 +295,7 @@ class GeohashPandas:
                         index=geohash_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

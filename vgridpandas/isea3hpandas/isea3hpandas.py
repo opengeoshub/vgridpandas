@@ -1,38 +1,36 @@
 from typing import Union, Callable, Any
-from collections import Counter
 from shapely.geometry import Polygon, MultiPolygon
+from collections import Counter
 import pandas as pd
 import geopandas as gpd
-
-from vgrid.conversion.latlon2dggs import latlon2qtm as latlon_to_qtm
-from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
+from vgrid.conversion.latlon2dggs import latlon2isea3h as latlon_to_isea3h
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.qtmpandas.qtmgeom import polyfill
-from vgridpandas.utils.decorator import catch_invalid_dggs_id
-from vgridpandas.utils.const import COLUMN_QTM_POLYFILL
+from vgridpandas.isea3hpandas.isea3hgeom import polyfill
+from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
+from vgridpandas.utils.const import COLUMN_ISEA3H_POLYFILL
+from vgrid.conversion.dggs2geo.isea3h2geo import isea3h2geo as isea3h_to_geo
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
-@pd.api.extensions.register_dataframe_accessor("qtm")
-class QTMPandas:
+@pd.api.extensions.register_dataframe_accessor("isea3h")
+class ISEA3HPandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
-    # QTM API
-    # These methods simply mirror the Vgrid qtm API and apply QTM functions to all rows
+    # isea3h API
+    # These methods simply mirror the Vgrid isea3h API and apply isea3h functions to all rows
 
-    def latlon2qtm(
+    def latlon2isea3h(
         self,
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
         set_index: bool = False,
     ) -> AnyDataFrame:
-        """Adds qtm ID to (Geo)DataFrame.
+        """Adds isea3h ID to (Geo)DataFrame.
 
         pd.DataFrame: uses `lat_col` and `lon_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
@@ -42,19 +40,18 @@ class QTMPandas:
         Parameters
         ----------
         resolution : int
-            QTM resolution
+            isea3h resolution
         lat_col : str
             Name of the latitude column (if used), default 'lat'
         lon_col : str
             Name of the longitude column (if used), default 'lon'
         set_index : bool
-            If True, the columns with QTM ID is set as index, default 'True'
+            If True, the columns with isea3h ID is set as index, default 'True'
 
         Returns
         -------
-        (Geo)DataFrame with QTM IDs added
+        (Geo)DataFrame with isea3h IDs added
         """
-
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
             lats = self._df.geometry.y
@@ -62,75 +59,77 @@ class QTMPandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        qtm_ids = [latlon_to_qtm(lat, lon, resolution) for lat, lon in zip(lats, lons)]
+        isea3h_ids = [
+            latlon_to_isea3h(lat, lon, resolution) for lat, lon in zip(lats, lons)
+        ]
 
-        # qtm_column = self._format_resolution(resolution)
-        qtm_column = "qtm"
-        assign_arg = {qtm_column: qtm_ids, "qtm_res": resolution}
+        # isea3h_column = self._format_resolution(resolution)
+        isea3h_column = "isea3h"
+        assign_arg = {isea3h_column: isea3h_ids, "isea3h_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(qtm_column)
+            return df.set_index(isea3h_column)
         return df
 
-    def qtm2geo(self, qtm_column: str = None) -> GeoDataFrame:
-        """Add geometry with QTM geometry to the DataFrame. Assumes QTM ID.
+    def isea3h2geo(self, isea3h_column: str = None) -> GeoDataFrame:
+        """Add geometry with isea3h geometry to the DataFrame. Assumes isea3h ID.
 
         Parameters
         ----------
-        qtm_column : str, optional
-            Name of the column containing QTM IDs. If None, first checks for 'qtm' column,
-            then assumes QTM IDs are in the index.
+        isea3h_column : str, optional
+            Name of the column containing isea3h IDs. If None, first checks for 'isea3h' column,
+            then assumes isea3h IDs are in the index.
 
         Returns
         -------
-        GeoDataFrame with QTM geometry
+        GeoDataFrame with isea3h geometry
 
         Raises
         ------
         ValueError
-            When an invalid QTM ID is encountered
+            When an invalid isea3h ID is encountered
         """
 
-        if qtm_column is not None:
-            # qtm qtm_ids are in the specified column
-            if qtm_column not in self._df.columns:
-                raise ValueError(f"Column '{qtm_column}' not found in DataFrame")
-            qtm_ids = self._df[qtm_column]
+        if isea3h_column is not None:
+            # isea3h IDs are in the specified column
+            if isea3h_column not in self._df.columns:
+                raise ValueError(f"Column '{isea3h_column}' not found in DataFrame")
+            isea3h_ids = self._df[isea3h_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = self._qtm_ids_to_geometries(qtm_ids)
+            # Handle both single 4t_ids and lists of 4t_ids
+            geometries = self._isea3h_ids_to_geometries(isea3h_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Check if 'qtm' column exists first
-            if "qtm" in self._df.columns:
-                # QTM IDs are in the 'qtm' column
-                qtm_ids = self._df["qtm"]
+            # Check if 'isea3h' column exists first
+            if "isea3h" in self._df.columns:
+                # isea3h IDs are in the 'isea3h' column
+                isea3h_ids = self._df["isea3h"]
 
-                # Handle both single 1_ids and lists of 1_ids
-                geometries = self._qtm_ids_to_geometries(qtm_ids)
+                # Handle both single 4t_ids and lists of 4t_ids
+                geometries = self._isea3h_ids_to_geometries(isea3h_ids)
 
                 result_df = self._df.copy()
                 result_df["geometry"] = geometries
                 return gpd.GeoDataFrame(result_df, crs="epsg:4326")
             else:
-                # QTM IDs are in the index
+                # isea3h 4t_ids are in the index
                 return self._apply_index_assign(
-                    wrapped_partial(qtm_to_geo),
+                    wrapped_partial(isea3h_to_geo),
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
                 )
 
-    def _qtm_ids_to_geometries(self, qtm_ids) -> list:
-        """Helper method to process QTM IDs into geometries.
+    def _isea3h_ids_to_geometries(self, isea3h_ids) -> list:
+        """Helper method to process isea3h IDs into geometries.
 
         Parameters
         ----------
-        qtm_ids : pandas.Series or list
-            QTM IDs to process
+        isea3h_ids : pandas.Series or list
+            isea3h IDs to process
 
         Returns
         -------
@@ -138,38 +137,42 @@ class QTMPandas:
             List of geometries (Polygon or MultiPolygon objects)
         """
         geometries = []
-        for q_ids in qtm_ids:
+        for i4t_ids in isea3h_ids:
             try:
-                if pd.isna(q_ids):
+                if pd.isna(i4t_ids):
                     # Handle NaN values - create empty geometry
                     geometries.append(Polygon())
-                elif isinstance(q_ids, list):
-                    # Handle list of 1_ids - create a MultiPolygon
-                    if len(q_ids) == 0:
+                elif isinstance(i4t_ids, list):
+                    # Handle list of 4t_ids - create a MultiPolygon
+                    if len(i4t_ids) == 0:
                         # Handle empty list - create empty geometry
                         geometries.append(Polygon())
                     else:
-                        cell_geometries = [qtm_to_geo(e_id) for e_id in q_ids]
+                        cell_geometries = [isea3h_to_geo(i4t_id) for i4t_id in i4t_ids]
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Handle single id
-                    geometries.append(qtm_to_geo(q_ids))
+                    geometries.append(isea3h_to_geo(i4t_ids))
             except (ValueError, TypeError):
-                if isinstance(q_ids, list):
-                    if len(q_ids) == 0:
+                if isinstance(i4t_ids, list):
+                    if len(i4t_ids) == 0:
                         geometries.append(Polygon())
                     else:
-                        cell_geometries = [qtm_to_geo(q_id) for q_id in q_ids]
+                        cell_geometries = [isea3h_to_geo(i4t_id) for i4t_id in i4t_ids]
                         geometries.append(MultiPolygon(cell_geometries))
                 else:
                     # Try to handle as single id
                     try:
-                        geometries.append(qtm_to_geo(q_ids))
+                        geometries.append(isea3h_to_geo(i4t_ids))
                     except Exception:
                         # If all else fails, create empty geometry
                         geometries.append(Polygon())
         return geometries
 
+    @doc_standard(
+        COLUMN_ISEA3H_POLYFILL,
+        "Returns a list of isea3h isea3h_ids representing the input geometry",
+    )
     def polyfill(
         self,
         resolution: int,
@@ -181,11 +184,11 @@ class QTMPandas:
         Parameters
         ----------
         resolution : int
-            QTM resolution
+            isea3h resolution
         predicate : str, optional
             Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
         compact : bool, optional
-            Whether to compact the QTM IDs
+            Whether to compact the isea3h IDs
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
@@ -198,14 +201,14 @@ class QTMPandas:
         result = self._df.apply(func, axis=1)
 
         if not explode:
-            assign_args = {COLUMN_QTM_POLYFILL: result}
+            assign_args = {COLUMN_ISEA3H_POLYFILL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_QTM_POLYFILL)
+        result = result.explode().to_frame(COLUMN_ISEA3H_POLYFILL)
 
         return self._df.join(result)
 
-    def qtmbin(
+    def isea3hbin(
         self,
         resolution: int,
         stats: str = "count",
@@ -216,14 +219,14 @@ class QTMPandas:
         return_geometry: bool = True,
     ) -> DataFrame:
         """
-        Bin points into QTM cells and compute statistics, optionally grouped by a category column.
+        Bin points into isea3h cells and compute statistics, optionally grouped by a category column.
 
         Supports both GeoDataFrame (with point geometry) and DataFrame (with lat/lon columns).
 
         Parameters
         ----------
         resolution : int
-            QTM resolution
+            isea3h resolution
         stats : str
             Statistic to compute: count, sum, min, max, mean, median, std, var, range, minority, majority, variety
         numeric_column : str, optional
@@ -235,14 +238,12 @@ class QTMPandas:
         lon_col : str, optional
             Name of the longitude column (only used for DataFrame input, ignored for GeoDataFrame)
         return_geometry : bool
-            If True, return a GeoDataFrame with qtm cell geometry
+            If True, return a GeoDataFrame with isea3h cell geometry
         """
         # Validate inputs and prepare data
-        # qtm_column = self._format_resolution(resolution)
-        qtm_column = "qtm"
-        df = self.latlon2qtm(resolution, lat_col, lon_col, False)
-        # Filter to keep only QTM IDs at the requested resolution
-        df = df[df[qtm_column].astype(str).str.len() == resolution]
+        # isea3h_column = self._format_resolution(resolution)
+        isea3h_column = "isea3h"
+        df = self.latlon2isea3h(resolution, lat_col, lon_col, False)
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
@@ -255,7 +256,7 @@ class QTMPandas:
             )
 
         # Prepare grouping columns
-        group_cols = [qtm_column]
+        group_cols = [isea3h_column]
         if category_column:
             df[category_column] = df[category_column].fillna("NaN_category")
             group_cols.append(category_column)
@@ -301,24 +302,24 @@ class QTMPandas:
                     [str(cat) for cat in df[category_column].unique()]
                 )
                 result = (
-                    df.groupby([qtm_column, category_column])
+                    df.groupby([isea3h_column, category_column])
                     .apply(cat_agg_func, include_groups=False)
                     .reset_index(name=stats)
                 )
                 result = result.pivot(
-                    index=qtm_column, columns=category_column, values=stats
+                    index=isea3h_column, columns=category_column, values=stats
                 )
                 result = result.reindex(
                     columns=all_categories, fill_value=0 if stats == "variety" else None
                 )
                 result = result.reset_index()
-                result.columns = [qtm_column] + [
+                result.columns = [isea3h_column] + [
                     f"{cat}_{stats}" for cat in all_categories
                 ]
             else:
                 # Handle categorical aggregation without category grouping
                 result = (
-                    df.groupby([qtm_column])
+                    df.groupby([isea3h_column])
                     .apply(cat_agg_func, include_groups=False)
                     .reset_index(name=stats)
                 )
@@ -334,12 +335,12 @@ class QTMPandas:
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[qtm_column, category_column, stats])
+                result = pd.DataFrame(columns=[isea3h_column, category_column, stats])
             else:
                 try:
                     # Pivot categories to columns
                     result = result.pivot(
-                        index=qtm_column, columns=category_column, values=stats
+                        index=isea3h_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
                     numeric_cols = result.select_dtypes(include=["number"]).columns
@@ -347,7 +348,7 @@ class QTMPandas:
                     result = result.reset_index()
 
                     # Rename columns with category prefixes
-                    new_columns = [qtm_column]
+                    new_columns = [isea3h_column]
                     for col in sorted(result.columns[1:]):
                         if col == "NaN_category":
                             new_columns.append(f"NaN_{stats}")
@@ -356,12 +357,12 @@ class QTMPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(qtm_column).size().reset_index(name=stats)
+                    result = df.groupby(isea3h_column).size().reset_index(name=stats)
 
         # Add geometry if requested
-        result = result.set_index(qtm_column)
+        result = result.set_index(isea3h_column)
         if return_geometry:
-            result = result.qtm.qtm2geo()
+            result = result.isea3h.isea3h2geo()
         return result.reset_index()
 
     def _apply_index_assign(
@@ -390,7 +391,7 @@ class QTMPandas:
         If using `finalizer`, can return anything the `finalizer` returns.
         """
         func = catch_invalid_dggs_id(func)
-        result = [processor(func(qtm_id)) for qtm_id in self._df.index]
+        result = [processor(func(isea3h_id)) for isea3h_id in self._df.index]
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
@@ -424,7 +425,7 @@ class QTMPandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {qtm_id: processor(func(qtm_id)) for qtm_id in self._df.index},
+                {isea3h_id: processor(func(isea3h_id)) for isea3h_id in self._df.index},
                 orient="index",
             )
             .stack()
@@ -436,4 +437,4 @@ class QTMPandas:
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:
-        return f"qtm_{str(resolution).zfill(2)}"
+        return f"ease_{str(resolution).zfill(2)}"

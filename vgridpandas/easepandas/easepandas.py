@@ -79,7 +79,8 @@ class EASEPandas:
         Parameters
         ----------
         ease_column : str, optional
-            Name of the column containing EASE. If None, assumes ease e_ids are in the index.
+            Name of the column containing EASE IDs. If None, first checks for 'ease' column,
+            then assumes EASE IDs are in the index.
 
         Returns
         -------
@@ -98,49 +99,77 @@ class EASEPandas:
             ease_ids = self._df[ease_column]
 
             # Handle both single e_ids and lists of e_ids
-            geometries = []
-            for e_ids in ease_ids:
-                try:
-                    if pd.isna(e_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(e_ids, list):
-                        # Handle list of e_ids - create a MultiPolygon
-                        if len(e_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(ease_to_geo(e_ids))
-                except (ValueError, TypeError):
-                    if isinstance(e_ids, list):
-                        if len(e_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(ease_to_geo(e_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._ease_ids_to_geometries(ease_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # EASE IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(ease_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'ease' column exists first
+            if "ease" in self._df.columns:
+                # EASE IDs are in the 'ease' column
+                ease_ids = self._df["ease"]
+
+                # Handle both single e_ids and lists of e_ids
+                geometries = self._ease_ids_to_geometries(ease_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # EASE IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(ease_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _ease_ids_to_geometries(self, ease_ids) -> list:
+        """Helper method to process EASE IDs into geometries.
+
+        Parameters
+        ----------
+        ease_ids : pandas.Series or list
+            EASE IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for e_ids in ease_ids:
+            try:
+                if pd.isna(e_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(e_ids, list):
+                    # Handle list of e_ids - create a MultiPolygon
+                    if len(e_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single id
+                    geometries.append(ease_to_geo(e_ids))
+            except (ValueError, TypeError):
+                if isinstance(e_ids, list):
+                    if len(e_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [ease_to_geo(e_id) for e_id in e_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single id
+                    try:
+                        geometries.append(ease_to_geo(e_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     def polyfill(
         self,
@@ -312,7 +341,7 @@ class EASEPandas:
                         index=ease_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

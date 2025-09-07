@@ -7,12 +7,10 @@ from vgrid.conversion.latlon2dggs import latlon2isea4t as latlon_to_isea4t
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.isea4tpandas.isea4tgeom import (
-    cell2boundary,
-    polyfill,
-)
+from vgridpandas.isea4tpandas.isea4tgeom import polyfill
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.const import COLUMN_ISEA4T_POLYFILL
+from vgrid.conversion.dggs2geo.isea4t2geo import isea4t2geo as isea4t_to_geo
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -79,7 +77,8 @@ class ISEA4TPandas:
         Parameters
         ----------
         isea4t_column : str, optional
-            Name of the column containing ISEA4T IDs. If None, assumes ISEA4T IDs are in the index.
+            Name of the column containing ISEA4T IDs. If None, first checks for 'isea4t' column,
+            then assumes ISEA4T IDs are in the index.
 
         Returns
         -------
@@ -98,53 +97,77 @@ class ISEA4TPandas:
             isea4t_ids = self._df[isea4t_column]
 
             # Handle both single 4t_ids and lists of 4t_ids
-            geometries = []
-            for i4t_ids in isea4t_ids:
-                try:
-                    if pd.isna(i4t_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(i4t_ids, list):
-                        # Handle list of 4t_ids - create a MultiPolygon
-                        if len(i4t_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                cell2boundary(i4t_id) for i4t_id in i4t_ids
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(cell2boundary(i4t_ids))
-                except (ValueError, TypeError):
-                    if isinstance(i4t_ids, list):
-                        if len(i4t_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                cell2boundary(i4t_id) for i4t_id in i4t_ids
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(cell2boundary(i4t_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._isea4t_ids_to_geometries(isea4t_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # isea4t 4t_ids are in the index
-            return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'isea4t' column exists first
+            if "isea4t" in self._df.columns:
+                # isea4t IDs are in the 'isea4t' column
+                isea4t_ids = self._df["isea4t"]
+
+                # Handle both single 4t_ids and lists of 4t_ids
+                geometries = self._isea4t_ids_to_geometries(isea4t_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # isea4t 4t_ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(isea4t_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _isea4t_ids_to_geometries(self, isea4t_ids) -> list:
+        """Helper method to process ISEA4T IDs into geometries.
+
+        Parameters
+        ----------
+        isea4t_ids : pandas.Series or list
+            ISEA4T IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for i4t_ids in isea4t_ids:
+            try:
+                if pd.isna(i4t_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(i4t_ids, list):
+                    # Handle list of 4t_ids - create a MultiPolygon
+                    if len(i4t_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [isea4t_to_geo(i4t_id) for i4t_id in i4t_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single id
+                    geometries.append(isea4t_to_geo(i4t_ids))
+            except (ValueError, TypeError):
+                if isinstance(i4t_ids, list):
+                    if len(i4t_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [isea4t_to_geo(i4t_id) for i4t_id in i4t_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single id
+                    try:
+                        geometries.append(isea4t_to_geo(i4t_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @doc_standard(
         COLUMN_ISEA4T_POLYFILL,
@@ -320,7 +343,7 @@ class ISEA4TPandas:
                         index=isea4t_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

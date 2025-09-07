@@ -77,7 +77,8 @@ class OLCPandas:
         Parameters
         ----------
         olc_column : str, optional
-            Name of the column containing OLC. If None, assumes olc olc_ids are in the index.
+            Name of the column containing OLC IDs. If None, first checks for 'olc' column,
+            then assumes OLC IDs are in the index.
 
         Returns
         -------
@@ -96,49 +97,77 @@ class OLCPandas:
             olc_ids = self._df[olc_column]
 
             # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for o_ids in olc_ids:
-                try:
-                    if pd.isna(o_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(o_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(o_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [olc_to_geo(e_id) for e_id in o_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(olc_to_geo(o_ids))
-                except (ValueError, TypeError):
-                    if isinstance(o_ids, list):
-                        if len(o_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [olc_to_geo(o_id) for o_id in o_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(olc_to_geo(o_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._olc_ids_to_geometries(olc_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # OLC IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(olc_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'olc' column exists first
+            if "olc" in self._df.columns:
+                # OLC IDs are in the 'olc' column
+                olc_ids = self._df["olc"]
+
+                # Handle both single 1_ids and lists of 1_ids
+                geometries = self._olc_ids_to_geometries(olc_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # OLC IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(olc_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _olc_ids_to_geometries(self, olc_ids) -> list:
+        """Helper method to process OLC IDs into geometries.
+
+        Parameters
+        ----------
+        olc_ids : pandas.Series or list
+            OLC IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for o_ids in olc_ids:
+            try:
+                if pd.isna(o_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(o_ids, list):
+                    # Handle list of 1_ids - create a MultiPolygon
+                    if len(o_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [olc_to_geo(e_id) for e_id in o_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single id
+                    geometries.append(olc_to_geo(o_ids))
+            except (ValueError, TypeError):
+                if isinstance(o_ids, list):
+                    if len(o_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [olc_to_geo(o_id) for o_id in o_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single id
+                    try:
+                        geometries.append(olc_to_geo(o_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     def polyfill(
         self,
@@ -310,7 +339,7 @@ class OLCPandas:
                         index=olc_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

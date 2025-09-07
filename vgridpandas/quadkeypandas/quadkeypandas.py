@@ -10,7 +10,7 @@ from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.quadkeypandas.quadkeygeom import polyfill
-from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo     
+from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_QUADKEY_POLYFILL
 
@@ -70,7 +70,7 @@ class QuadkeyPandas:
         tilecode_column = "quadkey"
         assign_arg = {tilecode_column: quadkey_ids, "quadkey_res": resolution}
         df = self._df.assign(**assign_arg)
-        if set_index:       
+        if set_index:
             return df.set_index(tilecode_column)
         return df
 
@@ -80,7 +80,8 @@ class QuadkeyPandas:
         Parameters
         ----------
         quadkey_column : str, optional
-            Name of the column containing Quadkey. If None, assumes quadkey quadkey_ids are in the index.
+            Name of the column containing Quadkey IDs. If None, first checks for 'quadkey' column,
+            then assumes Quadkey IDs are in the index.
 
         Returns
         -------
@@ -106,12 +107,24 @@ class QuadkeyPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Quadkey IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(quadkey_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'quadkey' column exists first
+            if "quadkey" in self._df.columns:
+                # Quadkey IDs are in the 'quadkey' column
+                quadkey_ids = self._df["quadkey"]
+
+                # Handle both single quadkey_ids and lists of quadkey_ids
+                geometries = self._quadkey_ids_to_geometries(quadkey_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Quadkey IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(quadkey_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def polyfill(
         self,
@@ -283,7 +296,7 @@ class QuadkeyPandas:
                         index=tilecode_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

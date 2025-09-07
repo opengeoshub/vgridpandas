@@ -11,7 +11,7 @@ from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 
 from vgrid.conversion.latlon2dggs import latlon2georef as latlon_to_georef
-from vgrid.conversion.dggs2geo.georef2geo import georef2geo as georef_to_geo            
+from vgrid.conversion.dggs2geo.georef2geo import georef2geo as georef_to_geo
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -78,7 +78,8 @@ class GEOREFPandas:
         Parameters
         ----------
         georef_column : str, optional
-            Name of the column containing GEOREF. If None, assumes georef georef_ids are in the index.
+            Name of the column containing GEOREF IDs. If None, first checks for 'georef' column,
+            then assumes GEOREF IDs are in the index.
 
         Returns
         -------
@@ -104,12 +105,24 @@ class GEOREFPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # GEOREF IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(georef_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'georef' column exists first
+            if "georef" in self._df.columns:
+                # GEOREF IDs are in the 'georef' column
+                georef_ids = self._df["georef"]
+
+                # Handle both single georef_ids and lists of georef_ids
+                geometries = self._georef_ids_to_geometries(georef_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # GEOREF IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(georef_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def georefbin(
         self,
@@ -246,7 +259,7 @@ class GEOREFPandas:
                         index=georef_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

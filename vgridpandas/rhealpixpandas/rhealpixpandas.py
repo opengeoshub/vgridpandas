@@ -30,7 +30,7 @@ class rHEALPixPandas:
         lon_col: str = "lon",
         set_index: bool = False,
     ) -> AnyDataFrame:
-        """Adds RHEALPIX ID to (Geo)DataFrame.      
+        """Adds RHEALPIX ID to (Geo)DataFrame.
 
         pd.DataFrame: uses `lat_col` and `lon_col` (default `lat` and `lon`)
         gpd.GeoDataFrame: uses `geometry`
@@ -78,7 +78,8 @@ class rHEALPixPandas:
         Parameters
         ----------
         rhealpix_column : str, optional
-            Name of the column containing rHEALPix rhp_ids. If None, assumes rHEALPix rhp_ids are in the index.
+            Name of the column containing rHEALPix rhp_ids. If None, first checks for 'rhealpix' column,
+            then assumes rHEALPix rhp_ids are in the index.
 
         Returns
         -------
@@ -104,12 +105,24 @@ class rHEALPixPandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # rHEALPix rhp_ids are in the index
-            return self._apply_index_assign(
-                wrapped_partial(rhealpix_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'rhealpix' column exists first
+            if "rhealpix" in self._df.columns:
+                # rHEALPix rhp_ids are in the 'rhealpix' column
+                rhealpix_ids = self._df["rhealpix"]
+
+                # Handle both single rhealpix_ids and lists of rhealpix_ids
+                geometries = self._rhealpix_ids_to_geometries(rhealpix_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # rHEALPix rhp_ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(rhealpix_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     @doc_standard(
         COLUMN_RHEALPIX_POLYFILL,
@@ -285,7 +298,7 @@ class rHEALPixPandas:
                         index=rhealpix_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

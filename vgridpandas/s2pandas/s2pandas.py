@@ -76,7 +76,8 @@ class S2Pandas:
         Parameters
         ----------
         s2_column : str, optional
-            Name of the column containing S2 tokens. If None, assumes S2 tokens are in the index.
+            Name of the column containing S2 tokens. If None, first checks for 's2' column,
+            then assumes S2 tokens are in the index.
 
         Returns
         -------
@@ -102,12 +103,24 @@ class S2Pandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # S2 tokens are in the index
-            return self._apply_index_assign(
-                wrapped_partial(s2_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 's2' column exists first
+            if "s2" in self._df.columns:
+                # S2 tokens are in the 's2' column
+                s2_tokens = self._df["s2"]
+
+                # Handle both single tokens and lists of tokens
+                geometries = self._s2_tokens_to_geometries(s2_tokens)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # S2 tokens are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(s2_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     @doc_standard(
         COLUMN_S2_POLYFILL,
@@ -283,7 +296,7 @@ class S2Pandas:
                         index=s2_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

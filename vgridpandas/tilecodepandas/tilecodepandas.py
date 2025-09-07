@@ -79,7 +79,8 @@ class TilecodePandas:
         Parameters
         ----------
         tilecode_column : str, optional
-            Name of the column containing Tilecode. If None, assumes tilecode tilecode_ids are in the index.
+            Name of the column containing Tilecode IDs. If None, first checks for 'tilecode' column,
+            then assumes Tilecode IDs are in the index.
 
         Returns
         -------
@@ -105,12 +106,24 @@ class TilecodePandas:
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Tilecode IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(tilecode_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'tilecode' column exists first
+            if "tilecode" in self._df.columns:
+                # Tilecode IDs are in the 'tilecode' column
+                tilecode_ids = self._df["tilecode"]
+
+                # Handle both single tilecode_ids and lists of tilecode_ids
+                geometries = self._tilecode_ids_to_geometries(tilecode_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Tilecode IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(tilecode_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def polyfill(
         self,
@@ -282,7 +295,7 @@ class TilecodePandas:
                         index=tilecode_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

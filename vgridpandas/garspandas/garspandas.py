@@ -77,7 +77,8 @@ class GARSPandas:
         Parameters
         ----------
         gars_column : str, optional
-            Name of the column containing GARS. If None, assumes gars gars_ids are in the index.
+            Name of the column containing GARS IDs. If None, first checks for 'gars' column,
+            then assumes GARS IDs are in the index.
 
         Returns
         -------
@@ -95,50 +96,32 @@ class GARSPandas:
                 raise ValueError(f"Column '{gars_column}' not found in DataFrame")
             gars_ids = self._df[gars_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for g_ids in gars_ids:
-                try:
-                    if pd.isna(g_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(g_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(g_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(gars_to_geo(g_ids))
-                except (ValueError, TypeError):
-                    if isinstance(g_ids, list):
-                        if len(g_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(gars_to_geo(g_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single gars_ids and lists of gars_ids
+            geometries = self._gars_ids_to_geometries(gars_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # GARS IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(gars_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'gars' column exists first
+            if "gars" in self._df.columns:
+                # GARS IDs are in the 'gars' column
+                gars_ids = self._df["gars"]
+
+                # Handle both single gars_ids and lists of gars_ids
+                geometries = self._gars_ids_to_geometries(gars_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # GARS IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(gars_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def garsbin(
         self,
@@ -275,7 +258,7 @@ class GARSPandas:
                         index=gars_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 
@@ -366,6 +349,52 @@ class GARSPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _gars_ids_to_geometries(self, gars_ids) -> list:
+        """Helper method to process gars IDs into geometries.
+
+        Parameters
+        ----------
+        gars_ids : pandas.Series or list
+            GARS IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for g_ids in gars_ids:
+            try:
+                if pd.isna(g_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(g_ids, list):
+                    # Handle list of gars_ids - create a MultiPolygon
+                    if len(g_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single gars_id
+                    geometries.append(gars_to_geo(g_ids))
+            except (ValueError, TypeError):
+                if isinstance(g_ids, list):
+                    if len(g_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single gars_id
+                    try:
+                        geometries.append(gars_to_geo(g_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

@@ -80,7 +80,8 @@ class MaidenheadPandas:
         Parameters
         ----------
         maidenhead_column : str, optional
-            Name of the column containing Maidenhead. If None, assumes maidenhead maidenhead_ids are in the index.
+            Name of the column containing Maidenhead IDs. If None, first checks for 'maidenhead' column,
+            then assumes Maidenhead IDs are in the index.
 
         Returns
         -------
@@ -98,54 +99,32 @@ class MaidenheadPandas:
                 raise ValueError(f"Column '{maidenhead_column}' not found in DataFrame")
             maidenhead_ids = self._df[maidenhead_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for mdh_ids in maidenhead_ids:
-                try:
-                    if pd.isna(mdh_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(mdh_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(mdh_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(maidenhead_to_geo(mdh_ids))
-                except (ValueError, TypeError):
-                    if isinstance(mdh_ids, list):
-                        if len(mdh_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [
-                                maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
-                            ]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(maidenhead_to_geo(mdh_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single maidenhead_ids and lists of maidenhead_ids
+            geometries = self._maidenhead_ids_to_geometries(maidenhead_ids)
 
             result_df = self._df.copy()
             result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Maidenhead IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(maidenhead_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'maidenhead' column exists first
+            if "maidenhead" in self._df.columns:
+                # Maidenhead IDs are in the 'maidenhead' column
+                maidenhead_ids = self._df["maidenhead"]
+
+                # Handle both single maidenhead_ids and lists of maidenhead_ids
+                geometries = self._maidenhead_ids_to_geometries(maidenhead_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Maidenhead IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(maidenhead_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def maidenheadbin(
         self,
@@ -284,7 +263,7 @@ class MaidenheadPandas:
                         index=maidenhead_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 
@@ -380,6 +359,56 @@ class MaidenheadPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _maidenhead_ids_to_geometries(self, maidenhead_ids) -> list:
+        """Helper method to process maidenhead IDs into geometries.
+
+        Parameters
+        ----------
+        maidenhead_ids : pandas.Series or list
+            Maidenhead IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for mdh_ids in maidenhead_ids:
+            try:
+                if pd.isna(mdh_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(mdh_ids, list):
+                    # Handle list of maidenhead_ids - create a MultiPolygon
+                    if len(mdh_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single maidenhead_id
+                    geometries.append(maidenhead_to_geo(mdh_ids))
+            except (ValueError, TypeError):
+                if isinstance(mdh_ids, list):
+                    if len(mdh_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single maidenhead_id
+                    try:
+                        geometries.append(maidenhead_to_geo(mdh_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

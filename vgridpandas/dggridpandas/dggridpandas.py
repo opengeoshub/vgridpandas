@@ -190,7 +190,7 @@ class DGGRIDPandas:
             assign_args = {f"dggrid_{dggs_type.lower()}": result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(f"dggrid_{dggs_type.lower()}")   
+        result = result.explode().to_frame(f"dggrid_{dggs_type.lower()}")
 
         return self._df.join(result)
 
@@ -339,7 +339,7 @@ class DGGRIDPandas:
                         index=dggrid_column, columns=category_column, values=stats
                     )
                     # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
-                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
                     result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 

@@ -58,7 +58,7 @@ def poly2dggrid(
 
     for poly in polys:
         bounding_box = box(*poly.bounds)
-        bdggrid_gdf = dggrid_instance.grid_cell_polygons_for_extent(
+        dggrid_gdf = dggrid_instance.grid_cell_polygons_for_extent(
             dggs_type,
             resolution,
             clip_geom=bounding_box,
