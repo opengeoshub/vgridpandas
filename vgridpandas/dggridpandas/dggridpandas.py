@@ -75,7 +75,7 @@ class DGGRIDPandas:
             for lat, lon in zip(lats, lons)
         ]
 
-        dggrid_column = f"dggrid_{dggs_type}"
+        dggrid_column = f"dggrid_{dggs_type}.lower()"
         assign_arg = {dggrid_column: dggrid_ids, f"{dggrid_column}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
