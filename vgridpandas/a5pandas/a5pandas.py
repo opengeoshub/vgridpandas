@@ -1,4 +1,4 @@
-""" A5Pandas module for A5 cell operations on pandas DataFrames and GeoDataFrames."""
+"""A5Pandas module for A5 cell operations on pandas DataFrames and GeoDataFrames."""
 
 from collections import Counter
 from typing import Union, Any, Callable
@@ -10,9 +10,8 @@ from geopandas.geodataframe import GeoDataFrame
 from vgrid.conversion.latlon2dggs import latlon2a5 as latlon_to_a5
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.a5pandas.a5geom import polyfill, validate_a5_resolution
+from vgridpandas.a5pandas.a5geom import polyfill
 from vgrid.conversion.dggs2geo.a52geo import a52geo as a5_to_geo
-from vgridpandas.utils.const import COLUMN_A5_POLYFILL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -27,7 +26,7 @@ class A5Pandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds A5 hex to (Geo)DataFrame.
 
@@ -49,11 +48,9 @@ class A5Pandas:
 
         Returns
         -------
-        (Geo)DataFrame with A5 IDs added       
+        (Geo)DataFrame with A5 IDs added
 
         """
-        resolution = validate_a5_resolution(resolution)
-
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
             lats = self._df.geometry.y
@@ -61,9 +58,7 @@ class A5Pandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        a5_hexes = [
-            latlon_to_a5(lat, lon, resolution) for lat, lon in zip(lats, lons)
-        ]
+        a5_hexes = [latlon_to_a5(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
         # a5_column = self._format_resolution(resolution)
         a5_column = "a5"
@@ -79,7 +74,8 @@ class A5Pandas:
         Parameters
         ----------
         a5_column : str, optional
-            Name of the column containing A5 hexes. If None, assumes A5 hexes are in the index.
+            Name of the column containing A5 hexes. If None, first checks for 'a5' column,
+            then assumes A5 hexes are in the index.
 
         Returns
         -------
@@ -98,55 +94,43 @@ class A5Pandas:
             a5_hexes = self._df[a5_column]
 
             # Handle both single hexes and lists of hexes
-            geometries = []
-            for hexes in a5_hexes:
-                try:
-                    if pd.isna(hexes):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(hexes, list):
-                        # Handle list of hexes - create a MultiPolygon
-                        if len(hexes) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [a5_to_geo(hex) for hex in hexes]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single hex
-                        geometries.append(a5_to_geo(hexes))
-                except (ValueError, TypeError):
-                    if isinstance(hexes, list):
-                        if len(hexes) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [a5_to_geo(hex) for hex in hexes]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single hex
-                        try:
-                            geometries.append(a5_to_geo(hexes))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._a5_hexes_to_geometries(a5_hexes)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # A5 hexes are in the index
-            return self._apply_index_assign(
-                wrapped_partial(a5_to_geo),    
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'a5' column exists first
+            if "a5" in self._df.columns:
+                # A5 hexes are in the 'a5' column
+                a5_hexes = self._df["a5"]
+
+                # Handle both single hexes and lists of hexes
+                geometries = self._a5_hexes_to_geometries(a5_hexes)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # A5 hexes are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(a5_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     @doc_standard(
         "a5",
         "containing a list A5 ID whose centroid falls into the Polygon",
     )
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -159,7 +143,7 @@ class A5Pandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
 
         def func(row):
@@ -214,9 +198,13 @@ class A5Pandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [a5_column]
@@ -227,23 +215,25 @@ class A5Pandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -259,20 +249,38 @@ class A5Pandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([a5_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=a5_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([a5_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=a5_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [a5_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [a5_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([a5_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([a5_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -282,10 +290,14 @@ class A5Pandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=a5_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=a5_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [a5_column]
                     for col in sorted(result.columns[1:]):
@@ -303,6 +315,52 @@ class A5Pandas:
         if return_geometry:
             result = result.a5.a52geo()
         return result.reset_index()
+
+    def _a5_hexes_to_geometries(self, a5_hexes) -> list:
+        """Helper method to process A5 hexes into geometries.
+
+        Parameters
+        ----------
+        a5_hexes : pandas.Series or list
+            A5 hexes to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for hexes in a5_hexes:
+            try:
+                if pd.isna(hexes):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(hexes, list):
+                    # Handle list of hexes - create a MultiPolygon
+                    if len(hexes) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [a5_to_geo(hex) for hex in hexes]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single hex
+                    geometries.append(a5_to_geo(hexes))
+            except (ValueError, TypeError):
+                if isinstance(hexes, list):
+                    if len(hexes) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [a5_to_geo(hex) for hex in hexes]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single hex
+                    try:
+                        geometries.append(a5_to_geo(hexes))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     # # Private methods
     def _apply_index_assign(
@@ -378,4 +436,3 @@ class A5Pandas:
     @staticmethod
     def _format_resolution(resolution: int) -> str:
         return f"a5_{str(resolution).zfill(2)}"
-       

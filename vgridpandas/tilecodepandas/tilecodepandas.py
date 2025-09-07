@@ -6,10 +6,9 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from shapely.geometry import Polygon, MultiPolygon
-from vgrid.conversion.latlon2dggs import latlon2tilecode
+from vgrid.conversion.latlon2dggs import latlon2tilecode as latlon_to_tilecode
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.tilecodepandas.tilecodegeom import polyfill
-from vgrid.utils.io import validate_tilecode_resolution
 from vgrid.conversion.dggs2geo.tilecode2geo import tilecode2geo as tilecode_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
 from vgridpandas.utils.const import COLUMN_TILECODE_POLYFILL
@@ -30,7 +29,7 @@ class TilecodePandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds tilecode ID to (Geo)DataFrame.
 
@@ -52,10 +51,8 @@ class TilecodePandas:
 
         Returns
         -------
-        (Geo)DataFrame with tilecode IDs added     
+        (Geo)DataFrame with tilecode IDs added
         """
-
-        resolution = validate_tilecode_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -65,7 +62,7 @@ class TilecodePandas:
             lats = self._df[lat_col]
 
         tilecode_ids = [
-            latlon2tilecode(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_tilecode(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # tilecode_column = self._format_resolution(resolution)
@@ -82,7 +79,8 @@ class TilecodePandas:
         Parameters
         ----------
         tilecode_column : str, optional
-            Name of the column containing Tilecode. If None, assumes tilecode tilecode_ids are in the index.
+            Name of the column containing Tilecode IDs. If None, first checks for 'tilecode' column,
+            then assumes Tilecode IDs are in the index.
 
         Returns
         -------
@@ -100,52 +98,40 @@ class TilecodePandas:
                 raise ValueError(f"Column '{tilecode_column}' not found in DataFrame")
             tilecode_ids = self._df[tilecode_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for tc_ids in tilecode_ids:
-                try:
-                    if pd.isna(tc_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(tc_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(tc_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [tilecode_to_geo(tc_id) for tc_id in tc_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(tilecode_to_geo(tc_ids))
-                except (ValueError, TypeError):
-                    if isinstance(tc_ids, list):
-                        if len(tc_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [tilecode_to_geo(tc_id) for tc_id in tc_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(tilecode_to_geo(tc_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single tilecode_ids and lists of tilecode_ids
+            geometries = self._tilecode_ids_to_geometries(tilecode_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Tilecode IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(tilecode_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'tilecode' column exists first
+            if "tilecode" in self._df.columns:
+                # Tilecode IDs are in the 'tilecode' column
+                tilecode_ids = self._df["tilecode"]
 
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+                # Handle both single tilecode_ids and lists of tilecode_ids
+                geometries = self._tilecode_ids_to_geometries(tilecode_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Tilecode IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(tilecode_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -158,9 +144,9 @@ class TilecodePandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
-        resolution = validate_tilecode_resolution(resolution)
+
         def func(row):
             return list(polyfill(row.geometry, resolution, predicate, compact))
 
@@ -173,7 +159,6 @@ class TilecodePandas:
         result = result.explode().to_frame(COLUMN_TILECODE_POLYFILL)
 
         return self._df.join(result)
-
 
     def tilecodebin(
         self,
@@ -214,9 +199,13 @@ class TilecodePandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [tilecode_column]
@@ -227,23 +216,25 @@ class TilecodePandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -259,20 +250,38 @@ class TilecodePandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([tilecode_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([tilecode_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=tilecode_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [tilecode_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [tilecode_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([tilecode_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([tilecode_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -282,10 +291,14 @@ class TilecodePandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=tilecode_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=tilecode_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [tilecode_column]
                     for col in sorted(result.columns[1:]):
@@ -303,7 +316,6 @@ class TilecodePandas:
         if return_geometry:
             result = result.tilecode.tilecode2geo()
         return result.reset_index()
-        
 
     def _apply_index_assign(
         self,
@@ -365,7 +377,10 @@ class TilecodePandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {tilecode_id: processor(func(tilecode_id)) for tilecode_id in self._df.index},
+                {
+                    tilecode_id: processor(func(tilecode_id))
+                    for tilecode_id in self._df.index
+                },
                 orient="index",
             )
             .stack()
@@ -374,6 +389,52 @@ class TilecodePandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _tilecode_ids_to_geometries(self, tilecode_ids) -> list:
+        """Helper method to process tilecode IDs into geometries.
+
+        Parameters
+        ----------
+        tilecode_ids : pandas.Series or list
+            Tilecode IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for tc_ids in tilecode_ids:
+            try:
+                if pd.isna(tc_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(tc_ids, list):
+                    # Handle list of tilecode_ids - create a MultiPolygon
+                    if len(tc_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [tilecode_to_geo(tc_id) for tc_id in tc_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single tilecode_id
+                    geometries.append(tilecode_to_geo(tc_ids))
+            except (ValueError, TypeError):
+                if isinstance(tc_ids, list):
+                    if len(tc_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [tilecode_to_geo(tc_id) for tc_id in tc_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single tilecode_id
+                    try:
+                        geometries.append(tilecode_to_geo(tc_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

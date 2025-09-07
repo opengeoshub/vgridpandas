@@ -1,4 +1,4 @@
-""" S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
+"""S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
 
 from collections import Counter
 from typing import Union, Any, Callable
@@ -7,11 +7,10 @@ import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-from vgrid.conversion import latlon2dggs
+from vgrid.conversion.latlon2dggs import latlon2s2 as latlon_to_s2
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.s2pandas.s2geom import  polyfill
-from vgrid.utils.io import validate_s2_resolution
+from vgridpandas.s2pandas.s2geom import polyfill
 from vgrid.conversion.dggs2geo.s22geo import s22geo as s2_to_geo
 from vgridpandas.utils.const import COLUMN_S2_POLYFILL
 
@@ -28,7 +27,7 @@ class S2Pandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds S2 token to (Geo)DataFrame.
 
@@ -50,10 +49,9 @@ class S2Pandas:
 
         Returns
         -------
-        (Geo)DataFrame with S2 IDs added       
+        (Geo)DataFrame with S2 IDs added
 
         """
-        resolution = validate_s2_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -62,9 +60,7 @@ class S2Pandas:
             lons = self._df[lon_col]
             lats = self._df[lat_col]
 
-        s2_tokens = [
-            latlon2dggs.latlon2s2(lat, lon, resolution) for lat, lon in zip(lats, lons)
-        ]
+        s2_tokens = [latlon_to_s2(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
         # s2_column = self._format_resolution(resolution)
         s2_column = "s2"
@@ -80,7 +76,8 @@ class S2Pandas:
         Parameters
         ----------
         s2_column : str, optional
-            Name of the column containing S2 tokens. If None, assumes S2 tokens are in the index.
+            Name of the column containing S2 tokens. If None, first checks for 's2' column,
+            then assumes S2 tokens are in the index.
 
         Returns
         -------
@@ -99,55 +96,43 @@ class S2Pandas:
             s2_tokens = self._df[s2_column]
 
             # Handle both single tokens and lists of tokens
-            geometries = []
-            for tokens in s2_tokens:
-                try:
-                    if pd.isna(tokens):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(tokens, list):
-                        # Handle list of tokens - create a MultiPolygon
-                        if len(tokens) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [s2_to_geo(token) for token in tokens]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single token
-                        geometries.append(s2_to_geo(tokens))
-                except (ValueError, TypeError):
-                    if isinstance(tokens, list):
-                        if len(tokens) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [s2_to_geo(token) for token in tokens]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single token
-                        try:
-                            geometries.append(s2_to_geo(tokens))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._s2_tokens_to_geometries(s2_tokens)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # S2 tokens are in the index
-            return self._apply_index_assign(
-                wrapped_partial(s2_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 's2' column exists first
+            if "s2" in self._df.columns:
+                # S2 tokens are in the 's2' column
+                s2_tokens = self._df["s2"]
+
+                # Handle both single tokens and lists of tokens
+                geometries = self._s2_tokens_to_geometries(s2_tokens)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # S2 tokens are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(s2_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     @doc_standard(
         COLUMN_S2_POLYFILL,
         "containing a list S2 ID whose centroid falls into the Polygon",
     )
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -160,7 +145,7 @@ class S2Pandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
 
         def func(row):
@@ -215,9 +200,13 @@ class S2Pandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [s2_column]
@@ -228,23 +217,25 @@ class S2Pandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -260,20 +251,38 @@ class S2Pandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([s2_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=s2_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([s2_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=s2_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [s2_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [s2_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([s2_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([s2_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -283,10 +292,14 @@ class S2Pandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=s2_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=s2_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [s2_column]
                     for col in sorted(result.columns[1:]):
@@ -336,7 +349,6 @@ class S2Pandas:
         assign_args = {column_name: result}
         return finalizer(self._df.assign(**assign_args))
 
-
     def _apply_index_explode(
         self,
         func: Callable,
@@ -377,7 +389,52 @@ class S2Pandas:
         result = self._df.join(result)
         return finalizer(result)
 
+    def _s2_tokens_to_geometries(self, s2_tokens) -> list:
+        """Helper method to process S2 tokens into geometries.
+
+        Parameters
+        ----------
+        s2_tokens : pandas.Series or list
+            S2 tokens to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for tokens in s2_tokens:
+            try:
+                if pd.isna(tokens):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(tokens, list):
+                    # Handle list of tokens - create a MultiPolygon
+                    if len(tokens) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [s2_to_geo(token) for token in tokens]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single token
+                    geometries.append(s2_to_geo(tokens))
+            except (ValueError, TypeError):
+                if isinstance(tokens, list):
+                    if len(tokens) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [s2_to_geo(token) for token in tokens]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single token
+                    try:
+                        geometries.append(s2_to_geo(tokens))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
+
     @staticmethod
     def _format_resolution(resolution: int) -> str:
         return f"s2_{str(resolution).zfill(2)}"
-       

@@ -2,19 +2,24 @@ from typing import Union, Set
 from shapely.geometry import box, Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.dggs.rhealpixdggs.dggs import RHEALPixDGGS
 from vgrid.dggs.rhealpixdggs.ellipsoids import WGS84_ELLIPSOID
-from vgrid.utils.geometry import fix_rhealpix_antimeridian_cells
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggscompact.rhealpixcompact import rhealpix_compact
 from vgrid.utils.io import validate_rhealpix_resolution
-from vgrid.conversion.dggs2geo.rhealpix2geo import rhealpix2geo as rhp_to_geo
+from vgrid.conversion.dggs2geo.rhealpix2geo import rhealpix2geo
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 rhealpix_dggs = RHEALPixDGGS(
-        ellipsoid=WGS84_ELLIPSOID, north_square=1, south_square=3, N_side=3
-    )
+    ellipsoid=WGS84_ELLIPSOID, north_square=1, south_square=3, N_side=3
+)
 
-def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
+
+def poly2rhealpix(
+    geometry: MultiPolyOrPoly,
+    resolution: int,
+    predicate: str = None,
+    compact: bool = False,
+) -> Set[str]:
     """
     Convert polygon geometries (Polygon, MultiPolygon) to rhealpix grid cells.
 
@@ -33,7 +38,6 @@ def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = N
         >>> len(cells) > 0
         True
     """
-
     resolution = validate_rhealpix_resolution(resolution)
     rhealpix_ids = []
     if isinstance(geometry, (Polygon, LineString)):
@@ -51,7 +55,7 @@ def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = N
         seed_point = (bbox_center_lon, bbox_center_lat)
         seed_cell = rhealpix_dggs.cell_from_point(resolution, seed_point, plane=False)
         seed_cell_id = str(seed_cell)
-        seed_cell_polygon = rhp_to_geo(seed_cell_id)
+        seed_cell_polygon = rhealpix2geo(seed_cell_id)
         if seed_cell_polygon.contains(bbox_polygon):
             rhealpix_ids.append(seed_cell_id)
             return rhealpix_ids
@@ -64,7 +68,7 @@ def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = N
                 if current_cell_id in covered_cells:
                     continue
                 covered_cells.add(current_cell_id)
-                cell_polygon = rhp_to_geo(current_cell_id)
+                cell_polygon = rhealpix2geo(current_cell_id)
                 if not cell_polygon.intersects(bbox_polygon):
                     continue
                 neighbors = current_cell.neighbors(plane=False)
@@ -75,7 +79,7 @@ def poly2rhealpix(geometry: MultiPolyOrPoly, resolution: int, predicate: str = N
             if compact:
                 covered_cells = rhealpix_compact(covered_cells)
             for cell_id in covered_cells:
-                cell_polygon = rhp_to_geo(cell_id)
+                cell_polygon = rhealpix2geo(cell_id)
                 if not check_predicate(cell_polygon, poly, predicate):
                     continue
                 rhealpix_ids.append(cell_id)
@@ -109,7 +113,8 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2rhealpix(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2rhealpix(geometry, resolution, predicate='intersect', compact=False))
+        return set(
+            poly2rhealpix(geometry, resolution, predicate="intersect", compact=False)
+        )
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-

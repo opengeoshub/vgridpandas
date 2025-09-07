@@ -7,15 +7,17 @@ from shapely.geometry import (
     LineString,
     MultiLineString,
 )
-import a5
 import geopandas as gpd
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_a5_resolution
-from vgrid.conversion.dggs2geo.a52geo import a52geo as a5_to_geo
+from vgrid.conversion.latlon2dggs import latlon2a5
+from vgrid.conversion.dggs2geo.a52geo import a52geo
 from vgrid.conversion.dggscompact.a5compact import a5compact
+
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 MultiPointOrPoint = Union[Point, MultiPoint]
+
 
 def poly2a5(geometry, resolution, predicate=None, compact=False):
     """
@@ -47,7 +49,7 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
         return []
 
     for poly in polys:
-        min_lng, min_lat, max_lng, max_lat = poly.bounds        
+        min_lng, min_lat, max_lng, max_lat = poly.bounds
         # Calculate longitude and latitude width based on resolution
         if resolution == 1:
             lon_width = 20
@@ -67,74 +69,71 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
             # For resolution 0, use larger width
             lon_width = 40
             lat_width = 40
-        
+
         # Generate longitude and latitude arrays
         longitudes = []
         latitudes = []
-        
+
         lon = min_lng
         while lon < max_lng:
             longitudes.append(lon)
             lon += lon_width
-        
+
         lat = min_lat
         while lat < max_lat:
             latitudes.append(lat)
             lat += lat_width
-        
+
         seen_a5_hex = set()  # Track unique A5 hex codes
-        
+
         for lon in longitudes:
             for lat in latitudes:
                 min_lon = lon
                 min_lat = lat
                 max_lon = lon + lon_width
                 max_lat = lat + lat_width
-                
+
                 # Calculate centroid
                 centroid_lat = (min_lat + max_lat) / 2
                 centroid_lon = (min_lon + max_lon) / 2
-                
+
                 try:
                     # Convert centroid to A5 cell ID using direct A5 functions
-                    cell_id = a5.lonlat_to_cell([centroid_lon, centroid_lat], resolution)
-                    cell_polygon = a5_to_geo(cell_id)
-                    
-                    a5_hex = a5.u64_to_hex(cell_id)
-                    
+                    a5_hex = latlon2a5(centroid_lat, centroid_lon, resolution)
+                    cell_polygon = a52geo(a5_hex)
+
                     # Only process if this A5 hex code hasn't been seen before
                     if a5_hex not in seen_a5_hex:
-                        seen_a5_hex.add(a5_hex)                        
+                        seen_a5_hex.add(a5_hex)
                         if check_predicate(cell_polygon, poly, predicate):
                             a5_hexes.append(a5_hex)
-                except Exception as e:
+                except Exception:
                     # Skip cells that can't be processed
                     continue
-    
+
     if compact and a5_hexes:
         # Create a GeoDataFrame with A5 hex codes and their geometries
         a5_data = []
         for a5_hex in a5_hexes:
             try:
                 # Convert A5 hex to geometry
-                cell_id = a5.hex_to_u64(a5_hex)
-                geometry = a5_to_geo(cell_id)
+                geometry = a52geo(a5_hex)
                 a5_data.append({"a5": a5_hex, "geometry": geometry})
-            except Exception as e:
+            except Exception:
                 # Skip invalid A5 hex codes
                 continue
-        
+
         if a5_data:
             temp_gdf = gpd.GeoDataFrame(a5_data, crs="EPSG:4326")
-            
+
             # Use a5compact function directly
             compacted_gdf = a5compact(temp_gdf, a5_hex="a5", output_format="gpd")
-            
+
             if compacted_gdf is not None:
                 # Extract A5 hex codes from compacted result
                 a5_hexes = compacted_gdf["a5"].tolist()
             # If compaction failed, keep original results
-    
+
     return a5_hexes
 
 
@@ -164,7 +163,6 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2a5(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2a5(geometry, resolution, predicate='intersect', compact=False))
+        return set(poly2a5(geometry, resolution, predicate="intersect", compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-

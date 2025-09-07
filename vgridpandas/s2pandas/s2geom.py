@@ -8,12 +8,14 @@ from shapely.geometry import (
     MultiLineString,
 )
 from vgrid.dggs import s2
-from vgridpandas.utils.geom import check_predicate
-from vgrid.conversion.dggs2geo.s22geo import s22geo as s2_to_geo
+from vgrid.utils.geometry import check_predicate
+from vgrid.conversion.dggs2geo.s22geo import s22geo
 from vgrid.utils.io import validate_s2_resolution
+
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 MultiPointOrPoint = Union[Point, MultiPoint]
+
 
 def poly2s2(geometry, resolution, predicate=None, compact=False):
     """
@@ -63,7 +65,7 @@ def poly2s2(geometry, resolution, predicate=None, compact=False):
 
         for cell_id in cell_ids:
             cell_token = s2.CellId.to_token(cell_id)
-            cell_polygon = s2_to_geo(cell_token)
+            cell_polygon = s22geo(cell_token)
             if not check_predicate(cell_polygon, poly, predicate):
                 continue
             s2_tokens.append(cell_token)
@@ -97,7 +99,6 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2s2(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2s2(geometry, resolution, predicate='intersect', compact=False))
+        return set(poly2s2(geometry, resolution, predicate="intersect", compact=False))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
-

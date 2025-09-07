@@ -3,13 +3,14 @@ from shapely.geometry import Polygon, MultiPolygon
 from collections import Counter
 import pandas as pd
 import geopandas as gpd
-from vgrid.conversion import latlon2dggs
+from vgrid.conversion.latlon2dggs import latlon2isea4t as latlon_to_isea4t
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.isea4tpandas.isea4tgeom import cell2boundary, validate_isea4t_resolution, polyfill
+from vgridpandas.isea4tpandas.isea4tgeom import polyfill
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.const import COLUMN_ISEA4T_POLYFILL
+from vgrid.conversion.dggs2geo.isea4t2geo import isea4t2geo as isea4t_to_geo
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -27,7 +28,7 @@ class ISEA4TPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds ISEA4T ID to (Geo)DataFrame.
 
@@ -49,10 +50,8 @@ class ISEA4TPandas:
 
         Returns
         -------
-        (Geo)DataFrame with ISEA4T IDs added     
+        (Geo)DataFrame with ISEA4T IDs added
         """
-        resolution = validate_isea4t_resolution(resolution)
-
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
             lats = self._df.geometry.y
@@ -61,7 +60,7 @@ class ISEA4TPandas:
             lats = self._df[lat_col]
 
         isea4t_ids = [
-            latlon2dggs.latlon2isea4t(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_isea4t(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # isea4t_column = self._format_resolution(resolution)
@@ -72,14 +71,14 @@ class ISEA4TPandas:
             return df.set_index(isea4t_column)
         return df
 
-
     def isea4t2geo(self, isea4t_column: str = None) -> GeoDataFrame:
         """Add geometry with isea4t geometry to the DataFrame. Assumes ISEA4T ID.
 
         Parameters
         ----------
         isea4t_column : str, optional
-            Name of the column containing ISEA4T IDs. If None, assumes ISEA4T IDs are in the index.
+            Name of the column containing ISEA4T IDs. If None, first checks for 'isea4t' column,
+            then assumes ISEA4T IDs are in the index.
 
         Returns
         -------
@@ -98,56 +97,89 @@ class ISEA4TPandas:
             isea4t_ids = self._df[isea4t_column]
 
             # Handle both single 4t_ids and lists of 4t_ids
-            geometries = []
-            for i4t_ids in isea4t_ids:
-                try:
-                    if pd.isna(i4t_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(i4t_ids, list):
-                        # Handle list of 4t_ids - create a MultiPolygon
-                        if len(i4t_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [cell2boundary(i4t_id) for i4t_id in i4t_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(cell2boundary(i4t_ids))
-                except (ValueError, TypeError):
-                    if isinstance(i4t_ids, list):
-                        if len(i4t_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [cell2boundary(i4t_id) for i4t_id in i4t_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(cell2boundary(i4t_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            geometries = self._isea4t_ids_to_geometries(isea4t_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # isea4t 4t_ids are in the index
-            return self._apply_index_assign(
-                wrapped_partial(cell2boundary),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'isea4t' column exists first
+            if "isea4t" in self._df.columns:
+                # isea4t IDs are in the 'isea4t' column
+                isea4t_ids = self._df["isea4t"]
 
+                # Handle both single 4t_ids and lists of 4t_ids
+                geometries = self._isea4t_ids_to_geometries(isea4t_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # isea4t 4t_ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(isea4t_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _isea4t_ids_to_geometries(self, isea4t_ids) -> list:
+        """Helper method to process ISEA4T IDs into geometries.
+
+        Parameters
+        ----------
+        isea4t_ids : pandas.Series or list
+            ISEA4T IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for i4t_ids in isea4t_ids:
+            try:
+                if pd.isna(i4t_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(i4t_ids, list):
+                    # Handle list of 4t_ids - create a MultiPolygon
+                    if len(i4t_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [isea4t_to_geo(i4t_id) for i4t_id in i4t_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single id
+                    geometries.append(isea4t_to_geo(i4t_ids))
+            except (ValueError, TypeError):
+                if isinstance(i4t_ids, list):
+                    if len(i4t_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [isea4t_to_geo(i4t_id) for i4t_id in i4t_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single id
+                    try:
+                        geometries.append(isea4t_to_geo(i4t_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @doc_standard(
         COLUMN_ISEA4T_POLYFILL,
         "Returns a list of ISEA4T isea4t_ids representing the input geometry",
     )
-    def polyfill(self, resolution: int, predicate: str = None, compact: bool = False, explode: bool = False) -> AnyDataFrame:
+    def polyfill(
+        self,
+        resolution: int,
+        predicate: str = None,
+        compact: bool = False,
+        explode: bool = False,
+    ) -> AnyDataFrame:
         """
         Parameters
         ----------
@@ -160,7 +192,7 @@ class ISEA4TPandas:
         explode : bool
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
-            Default: False       
+            Default: False
         """
 
         def func(row):
@@ -215,9 +247,13 @@ class ISEA4TPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [isea4t_column]
@@ -228,23 +264,25 @@ class ISEA4TPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -260,20 +298,38 @@ class ISEA4TPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([isea4t_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=isea4t_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([isea4t_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=isea4t_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [isea4t_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [isea4t_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([isea4t_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([isea4t_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -283,10 +339,14 @@ class ISEA4TPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=isea4t_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=isea4t_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [isea4t_column]
                     for col in sorted(result.columns[1:]):

@@ -15,7 +15,13 @@ from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.decorator import catch_invalid_dggs_id, doc_standard
 from vgridpandas.utils.functools import wrapped_partial
-from vgridpandas.h3pandas.h3geom import cell_to_boundary_lng_lat, polyfill, linetrace, _switch_lat_lng
+from vgridpandas.h3pandas.h3geom import (
+    cell_to_boundary_lng_lat,
+    polyfill,
+    linetrace,
+    _switch_lat_lng,
+)
+from vgrid.utils.io import validate_h3_resolution
 from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -34,7 +40,7 @@ class H3Pandas:
         resolution: int,
         lat_col: str = "lat",
         lng_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds H3 index to (Geo)DataFrame.
 
@@ -85,9 +91,7 @@ class H3Pandas:
         881e2659c3fffff    1  POINT (15.00000 51.00000)
 
         """
-        if not isinstance(resolution, int) or resolution not in range(0, 16):
-            raise ValueError("Resolution must be an integer in range [0, 15]")
-
+        resolution = validate_h3_resolution(resolution)
         if isinstance(self._df, gpd.GeoDataFrame):
             lngs = self._df.geometry.x
             lats = self._df.geometry.y
@@ -101,7 +105,7 @@ class H3Pandas:
 
         # h3_column = self._format_resolution(resolution)
         h3_column = "h3"
-        assign_arg = {h3_column: h3_id, "h3_res": resolution}   
+        assign_arg = {h3_column: h3_id, "h3_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
             return df.set_index(h3_column)
@@ -147,7 +151,8 @@ class H3Pandas:
         Parameters
         ----------
         h3_column : str, optional
-            Name of the column containing H3 tokens. If None, assumes H3 tokens are in the index.
+            Name of the column containing H3 ids. If None, first checks for 'h3' column,
+            then assumes H3 ids are in the index.
 
         Returns
         -------
@@ -169,55 +174,87 @@ class H3Pandas:
         """
 
         if h3_column is not None:
-            # H3 tokens are in the specified column
+            # H3 ids are in the specified column
             if h3_column not in self._df.columns:
                 raise ValueError(f"Column '{h3_column}' not found in DataFrame")
-            h3_tokens = self._df[h3_column]
+            h3_ids = self._df[h3_column]
 
-            # Handle both single tokens and lists of tokens
-            geometries = []
-            for tokens in h3_tokens:
-                try:
-                    if pd.isna(tokens):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(tokens, list):
-                        # Handle list of tokens - create a MultiPolygon
-                        if len(tokens) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single token
-                        geometries.append(cell_to_boundary_lng_lat(tokens))
-                except (ValueError, TypeError):
-                    if isinstance(tokens, list):
-                        if len(tokens) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [cell_to_boundary_lng_lat(token) for token in tokens]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single token
-                        try:
-                            geometries.append(cell_to_boundary_lng_lat(tokens))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single ids and lists of ids
+            geometries = self._h3_hexes_to_geometries(h3_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # H3 tokens are in the index
-            return self._apply_index_assign(
-                wrapped_partial(cell_to_boundary_lng_lat),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'h3' column exists first
+            if "h3" in self._df.columns:
+                # H3 ids are in the 'h3' column
+                h3_ids = self._df["h3"]
+
+                # Handle both single ids and lists of ids
+                geometries = self._h3_hexes_to_geometries(h3_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # H3 ids are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(cell_to_boundary_lng_lat),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
+
+    def _h3_hexes_to_geometries(self, h3_hexes) -> list:
+        """Helper method to process H3 hexes into geometries.
+
+        Parameters
+        ----------
+        h3_hexes : pandas.Series or list
+            H3 hexes to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for hexes in h3_hexes:
+            try:
+                if pd.isna(hexes):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(hexes, list):
+                    # Handle list of hexes - create a MultiPolygon
+                    if len(hexes) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            cell_to_boundary_lng_lat(hex) for hex in hexes
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single hex
+                    geometries.append(cell_to_boundary_lng_lat(hexes))
+            except (ValueError, TypeError):
+                if isinstance(hexes, list):
+                    if len(hexes) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            cell_to_boundary_lng_lat(hex) for hex in hexes
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single hex
+                    try:
+                        geometries.append(cell_to_boundary_lng_lat(hexes))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     def h3bin(
         self,
@@ -258,9 +295,13 @@ class H3Pandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [h3_column]
@@ -271,23 +312,25 @@ class H3Pandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -303,20 +346,38 @@ class H3Pandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([h3_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=h3_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([h3_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=h3_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [h3_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [h3_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([h3_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([h3_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -326,10 +387,14 @@ class H3Pandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=h3_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=h3_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [h3_column]
                     for col in sorted(result.columns[1:]):
@@ -389,9 +454,7 @@ class H3Pandas:
         """
         return self._apply_index_assign(h3.is_valid_cell, "h3_is_valid")
 
-    @doc_standard(
-        "h3_k_ring", "containing a list H3 ID within a distance of `k`"
-    )
+    @doc_standard("h3_k_ring", "containing a list H3 ID within a distance of `k`")
     def k_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
         """
         Parameters
@@ -442,8 +505,7 @@ class H3Pandas:
 
     @doc_standard(
         "h3_hex_ring",
-        "containing a list H3 ID forming a hollow hexagonal ring"
-        "at a distance `k`",
+        "containing a list H3 ID forming a hollow hexagonal ringat a distance `k`",
     )
     def hex_ring(self, k: int = 1, explode: bool = False) -> AnyDataFrame:
         """
@@ -544,11 +606,11 @@ class H3Pandas:
         "containing a list H3 ID whose centroid falls into the Polygon",
     )
     def polyfill(
-        self, 
-        resolution: int, 
+        self,
+        resolution: int,
         explode: bool = False,
         predicate: str = None,
-        compact: bool = False
+        compact: bool = False,
     ) -> AnyDataFrame:
         """
         Parameters
@@ -562,7 +624,7 @@ class H3Pandas:
         predicate : str, optional
             Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
         compact : bool, optional
-            Enable H3 compact mode      
+            Enable H3 compact mode
         """
 
         def func(row):
@@ -976,7 +1038,6 @@ class H3Pandas:
 
         result = result.explode().to_frame(COLUMN_H3_LINETRACE)
         return df.join(result)
-
 
     def _apply_index_assign(
         self,

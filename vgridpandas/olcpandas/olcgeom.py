@@ -3,7 +3,7 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.generator.olcgrid import olc_grid, olc_refine_cell
 from vgrid.utils.io import validate_olc_resolution
 from vgrid.conversion.dggscompact.olccompact import olc_compact
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
@@ -45,7 +45,7 @@ def poly2olc(
 
     for poly in polys:
         base_resolution = 2
-        base_cells_gdf = olc_grid(base_resolution,verbose=False)
+        base_cells_gdf = olc_grid(base_resolution, verbose=False)
         seed_cells = []
         for idx, base_cell in base_cells_gdf.iterrows():
             base_cell_poly = base_cell["geometry"]

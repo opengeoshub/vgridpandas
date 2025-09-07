@@ -2,12 +2,13 @@ from typing import Union, Set
 import re
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 from vgrid.dggs import mercantile
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggscompact.tilecodecompact import tilecode_compact
 from vgrid.utils.io import validate_tilecode_resolution
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+
 
 def poly2tilecode(
     geometry: MultiPolyOrPoly,
@@ -34,7 +35,7 @@ def poly2tilecode(
         True
     """
 
-    resolution = validate_tilecode_resolution(resolution)    
+    resolution = validate_tilecode_resolution(resolution)
     if isinstance(geometry, (Polygon, LineString)):
         polys = [geometry]
     elif isinstance(geometry, (MultiPolygon, MultiLineString)):
@@ -58,7 +59,7 @@ def poly2tilecode(
             x = int(match.group(2))
             y = int(match.group(3))
             bounds = mercantile.bounds(x, y, z)
-          
+
             min_lat, min_lon = bounds.south, bounds.west
             max_lat, max_lon = bounds.north, bounds.east
             cell_polygon = Polygon(
@@ -103,6 +104,8 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2tilecode(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2tilecode(geometry, resolution, predicate="intersect", compact=False))
+        return set(
+            poly2tilecode(geometry, resolution, predicate="intersect", compact=False)
+        )
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

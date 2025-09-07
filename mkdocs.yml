@@ -87,40 +87,43 @@ nav:
     - Home: index.md
     - Installation: installation.md
     - Usage: notebooks/00_intro.ipynb
-    - Tutorials: tutorials.md
+    - Notebooks:
+        - notebooks/00_intro.ipynb
+        - notebooks/01_h3.ipynb
+        - notebooks/02_s2.ipynb
+        - notebooks/03_a5.ipynb
+        - notebooks/04_rhealpix.ipynb
+        - notebooks/05_isea4t.ipynb
+        - notebooks/06_isea3h.ipynb
+        - notebooks/07_ease.ipynb
+        - notebooks/08_dggal.ipynb
+        - notebooks/09_dggrid.ipynb
+        - notebooks/10_qtm.ipynb
+        - notebooks/11_olc.ipynb
+        - notebooks/12_geohash.ipynb
+        - notebooks/13_georef.ipynb
+        - notebooks/14_mgrs.ipynb
+        - notebooks/15_tilecode.ipynb
+        - notebooks/16_quadkey.ipynb
+        - notebooks/17_maidenhead.ipynb
+        - notebooks/18_gars.ipynb
+    - API Reference:
+        - S2Pandas: api/s2pandas.md
+        - H3Pandas: api/h3pandas.md
+        - A5Pandas: api/a5pandas.md
+        - RHEALPixPandas: api/rhealpixpandas.md
+        - ISEA4TPandas: api/isea4tpandas.md
+        - EASEPandas: api/easepandas.md
+        - QTMPandas: api/qtmpandas.md
+        - OLCPandas: api/olcpandas.md
+        - GeohashPandas: api/geohashpandas.md
+        - MGRSPandas: api/mgrspandas.md
+        - GEOREFPandas: api/georefpandas.md
+        - TileCodePandas: api/tilecodepandas.md
+        - QuadkeyPandas: api/quadkeypandas.md
+        - MaidenheadPandas: api/maidenheadpandas.md   
+        - GARSPandas: api/garspandas.md
+
     - Contributing: contributing.md
     - Changelog: changelog.md
     - Report Issues: https://github.com/opengeoshub/vgridpandas/issues
-    - API Reference:
-          - S2Pandas: s2pandas.md
-          - H3Pandas: h3pandas.md
-          - A5Pandas: a5pandas.md
-          - RHEALPixPandas: rhealpixpandas.md
-          - ISEA4TPandas: isea4tpandas.md
-          - EASEPandas: easepandas.md
-          - QTMPandas: qtmpandas.md
-          - OLCPandas: olcpandas.md
-          - GeohashPandas: geohashpandas.md
-          - MGRSPandas: mgrspandas.md
-          - GEOREFPandas: georefpandas.md
-          - TileCodePandas: tilecodepandas.md
-          - QuadkeyPandas: quadkeypandas.md
-          - MaidenheadPandas: maidenheadpandas.md   
-          - GARSPandas: garspandas.md
-    - Notebooks:
-          - notebooks/00_intro.ipynb
-          - notebooks/01_h3.ipynb
-          - notebooks/02_s2.ipynb
-          - notebooks/03_a5.ipynb
-          - notebooks/04_rhealpix.ipynb
-          - notebooks/05_isea4t.ipynb
-          - notebooks/06_ease.ipynb
-          - notebooks/07_qtm.ipynb
-          - notebooks/08_olc.ipynb
-          - notebooks/09_geohash.ipynb
-          - notebooks/10_mgrs.ipynb
-          - notebooks/11_georef.ipynb
-          - notebooks/12_tilecode.ipynb
-          - notebooks/13_quadkey.ipynb
-          - notebooks/14_maidenhead.ipynb  
-          - notebooks/15_gars.ipynb

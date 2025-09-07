@@ -1,15 +1,16 @@
-from typing import Union, Set, Iterator
+from typing import Union, Set
 from shapely.geometry import box, Polygon, MultiPolygon, LineString, MultiLineString
-from vgrid.dggs.easedggs.constants import levels_specs, geo_crs, ease_crs
-from vgrid.dggs.easedggs.dggs.grid_addressing import (
+from ease_dggs.constants import levels_specs, geo_crs, ease_crs
+from ease_dggs.dggs.grid_addressing import (
     grid_ids_to_geos,
     geo_polygon_to_grid_ids,
 )
 from vgrid.conversion.dggscompact.easecompact import ease_compact
-from vgridpandas.utils.geom import check_predicate
+from vgrid.utils.geometry import check_predicate
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
+
 
 def validate_ease_resolution(resolution):
     """
@@ -35,7 +36,13 @@ def validate_ease_resolution(resolution):
 
     return resolution
 
-def poly2ease(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None, compact: bool = False) -> Set[str]:
+
+def poly2ease(
+    geometry: MultiPolyOrPoly,
+    resolution: int,
+    predicate: str = None,
+    compact: bool = False,
+) -> Set[str]:
     """
     Convert polygon geometries (Polygon, MultiPolygon) to ease grid cells.
 
@@ -100,9 +107,10 @@ def poly2ease(geometry: MultiPolyOrPoly, resolution: int, predicate: str = None,
                 ]
             )
             if check_predicate(cell_polygon, poly, predicate):
-                ease_id  = str(ease_cell)
+                ease_id = str(ease_cell)
                 ease_ids.append(ease_id)
     return ease_ids
+
 
 def polyfill(
     geometry: MultiPolyOrPoly,
@@ -130,6 +138,8 @@ def polyfill(
     if isinstance(geometry, (Polygon, MultiPolygon)):
         return set(poly2ease(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2ease(geometry, resolution, predicate='intersect', compact=False))
+        return set(
+            poly2ease(geometry, resolution, predicate="intersect", compact=False)
+        )
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

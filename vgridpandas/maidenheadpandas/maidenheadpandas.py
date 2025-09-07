@@ -2,15 +2,15 @@ from typing import Union, Callable, Any
 from collections import Counter
 import pandas as pd
 import geopandas as gpd
-from vgrid.conversion.latlon2dggs import latlon2maidenhead
+from vgrid.conversion.latlon2dggs import latlon2maidenhead as latlon_to_maidenhead
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from shapely.geometry import Polygon, MultiPolygon
 
 from vgridpandas.utils.functools import wrapped_partial
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
-from vgridpandas.maidenheadpandas.maidenheadgeom import validate_maidenhead_resolution
 from vgrid.conversion.dggs2geo.maidenhead2geo import maidenhead2geo as maidenhead_to_geo
+
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
@@ -27,7 +27,7 @@ class MaidenheadPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds maidenhead ID to (Geo)DataFrame.
 
@@ -49,7 +49,7 @@ class MaidenheadPandas:
 
         Returns
         -------
-        (Geo)DataFrame with maidenhead IDs added     
+        (Geo)DataFrame with maidenhead IDs added
         """
 
         if not isinstance(resolution, int) or resolution not in range(1, 5):
@@ -63,7 +63,7 @@ class MaidenheadPandas:
             lats = self._df[lat_col]
 
         maidenhead_ids = [
-            latlon2maidenhead(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_maidenhead(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # maidenhead_column = self._format_resolution(resolution)
@@ -80,7 +80,8 @@ class MaidenheadPandas:
         Parameters
         ----------
         maidenhead_column : str, optional
-            Name of the column containing Maidenhead. If None, assumes maidenhead maidenhead_ids are in the index.
+            Name of the column containing Maidenhead IDs. If None, first checks for 'maidenhead' column,
+            then assumes Maidenhead IDs are in the index.
 
         Returns
         -------
@@ -98,51 +99,32 @@ class MaidenheadPandas:
                 raise ValueError(f"Column '{maidenhead_column}' not found in DataFrame")
             maidenhead_ids = self._df[maidenhead_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for mdh_ids in maidenhead_ids:
-                try:
-                    if pd.isna(mdh_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(mdh_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(mdh_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(maidenhead_to_geo(mdh_ids))
-                except (ValueError, TypeError):
-                    if isinstance(mdh_ids, list):
-                        if len(mdh_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(maidenhead_to_geo(mdh_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single maidenhead_ids and lists of maidenhead_ids
+            geometries = self._maidenhead_ids_to_geometries(maidenhead_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # Maidenhead IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(maidenhead_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'maidenhead' column exists first
+            if "maidenhead" in self._df.columns:
+                # Maidenhead IDs are in the 'maidenhead' column
+                maidenhead_ids = self._df["maidenhead"]
 
+                # Handle both single maidenhead_ids and lists of maidenhead_ids
+                geometries = self._maidenhead_ids_to_geometries(maidenhead_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # Maidenhead IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(maidenhead_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def maidenheadbin(
         self,
@@ -183,9 +165,13 @@ class MaidenheadPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [maidenhead_column]
@@ -196,23 +182,25 @@ class MaidenheadPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -228,33 +216,57 @@ class MaidenheadPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([maidenhead_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=maidenhead_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([maidenhead_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=maidenhead_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [maidenhead_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [maidenhead_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([maidenhead_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([maidenhead_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
         if category_column and stats not in ["minority", "majority", "variety"]:
             if len(result) == 0:
-                result = pd.DataFrame(columns=[maidenhead_column, category_column, stats])
+                result = pd.DataFrame(
+                    columns=[maidenhead_column, category_column, stats]
+                )
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=maidenhead_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=maidenhead_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [maidenhead_column]
                     for col in sorted(result.columns[1:]):
@@ -265,14 +277,16 @@ class MaidenheadPandas:
                     result.columns = new_columns
                 except Exception:
                     # Fallback to simple count if pivot fails
-                    result = df.groupby(maidenhead_column).size().reset_index(name=stats)
+                    result = (
+                        df.groupby(maidenhead_column).size().reset_index(name=stats)
+                    )
 
         # Add geometry if requested
         result = result.set_index(maidenhead_column)
         if return_geometry:
             result = result.maidenhead.maidenhead2geo()
         return result.reset_index()
-        
+
     def _apply_index_assign(
         self,
         func: Callable,
@@ -333,7 +347,10 @@ class MaidenheadPandas:
         func = catch_invalid_dggs_id(func)
         result = (
             pd.DataFrame.from_dict(
-                {maidenhead_id: processor(func(maidenhead_id)) for maidenhead_id in self._df.index},
+                {
+                    maidenhead_id: processor(func(maidenhead_id))
+                    for maidenhead_id in self._df.index
+                },
                 orient="index",
             )
             .stack()
@@ -342,6 +359,56 @@ class MaidenheadPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _maidenhead_ids_to_geometries(self, maidenhead_ids) -> list:
+        """Helper method to process maidenhead IDs into geometries.
+
+        Parameters
+        ----------
+        maidenhead_ids : pandas.Series or list
+            Maidenhead IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for mdh_ids in maidenhead_ids:
+            try:
+                if pd.isna(mdh_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(mdh_ids, list):
+                    # Handle list of maidenhead_ids - create a MultiPolygon
+                    if len(mdh_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single maidenhead_id
+                    geometries.append(maidenhead_to_geo(mdh_ids))
+            except (ValueError, TypeError):
+                if isinstance(mdh_ids, list):
+                    if len(mdh_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [
+                            maidenhead_to_geo(mdh_id) for mdh_id in mdh_ids
+                        ]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single maidenhead_id
+                    try:
+                        geometries.append(maidenhead_to_geo(mdh_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:

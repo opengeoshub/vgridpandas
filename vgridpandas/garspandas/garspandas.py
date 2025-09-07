@@ -2,17 +2,16 @@ from typing import Union, Callable, Any
 from collections import Counter
 import pandas as pd
 import geopandas as gpd
-from shapely.geometry import Polygon, MultiPolygon  
-from vgrid.conversion.latlon2dggs import latlon2gars
+from shapely.geometry import Polygon, MultiPolygon
+from vgrid.conversion.latlon2dggs import latlon2gars as latlon_to_gars
+from vgrid.conversion.dggs2geo.gars2geo import gars2geo as gars_to_geo
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 
 from vgridpandas.utils.functools import wrapped_partial
-from vgrid.conversion.dggs2geo.gars2geo import gars2geo as gars_to_geo
 from vgridpandas.utils.decorator import catch_invalid_dggs_id
-from vgridpandas.garspandas.garsgeom import validate_gars_resolution
 
-AnyDataFrame = Union[DataFrame, GeoDataFrame]       
+AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
 @pd.api.extensions.register_dataframe_accessor("gars")
@@ -28,7 +27,7 @@ class GARSPandas:
         resolution: int,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        set_index: bool = True,
+        set_index: bool = False,
     ) -> AnyDataFrame:
         """Adds gars ID to (Geo)DataFrame.
 
@@ -50,10 +49,8 @@ class GARSPandas:
 
         Returns
         -------
-        (Geo)DataFrame with gars IDs added     
+        (Geo)DataFrame with gars IDs added
         """
-
-        resolution = validate_gars_resolution(resolution)
 
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
@@ -63,7 +60,7 @@ class GARSPandas:
             lats = self._df[lat_col]
 
         gars_ids = [
-            latlon2gars(lat, lon, resolution) for lat, lon in zip(lats, lons)
+            latlon_to_gars(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
         # gars_column = self._format_resolution(resolution)
@@ -80,7 +77,8 @@ class GARSPandas:
         Parameters
         ----------
         gars_column : str, optional
-            Name of the column containing GARS. If None, assumes gars gars_ids are in the index.
+            Name of the column containing GARS IDs. If None, first checks for 'gars' column,
+            then assumes GARS IDs are in the index.
 
         Returns
         -------
@@ -98,51 +96,32 @@ class GARSPandas:
                 raise ValueError(f"Column '{gars_column}' not found in DataFrame")
             gars_ids = self._df[gars_column]
 
-            # Handle both single 1_ids and lists of 1_ids
-            geometries = []
-            for g_ids in gars_ids:
-                try:
-                    if pd.isna(g_ids):
-                        # Handle NaN values - create empty geometry
-                        geometries.append(Polygon())
-                    elif isinstance(g_ids, list):
-                        # Handle list of 1_ids - create a MultiPolygon
-                        if len(g_ids) == 0:
-                            # Handle empty list - create empty geometry
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Handle single id
-                        geometries.append(gars_to_geo(g_ids))
-                except (ValueError, TypeError):
-                    if isinstance(g_ids, list):
-                        if len(g_ids) == 0:
-                            geometries.append(Polygon())
-                        else:
-                            cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
-                            geometries.append(MultiPolygon(cell_geometries))
-                    else:
-                        # Try to handle as single id
-                        try:
-                            geometries.append(gars_to_geo(g_ids))
-                        except Exception:
-                            # If all else fails, create empty geometry
-                            geometries.append(Polygon())
+            # Handle both single gars_ids and lists of gars_ids
+            geometries = self._gars_ids_to_geometries(gars_ids)
 
             result_df = self._df.copy()
-            result_df['geometry'] = geometries
+            result_df["geometry"] = geometries
             return gpd.GeoDataFrame(result_df, crs="epsg:4326")
 
         else:
-            # GARS IDs are in the index
-            return self._apply_index_assign(
-                wrapped_partial(gars_to_geo),
-                "geometry",
-                finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
-            )
+            # Check if 'gars' column exists first
+            if "gars" in self._df.columns:
+                # GARS IDs are in the 'gars' column
+                gars_ids = self._df["gars"]
 
+                # Handle both single gars_ids and lists of gars_ids
+                geometries = self._gars_ids_to_geometries(gars_ids)
+
+                result_df = self._df.copy()
+                result_df["geometry"] = geometries
+                return gpd.GeoDataFrame(result_df, crs="epsg:4326")
+            else:
+                # GARS IDs are in the index
+                return self._apply_index_assign(
+                    wrapped_partial(gars_to_geo),
+                    "geometry",
+                    finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
+                )
 
     def garsbin(
         self,
@@ -183,9 +162,13 @@ class GARSPandas:
 
         # Validate column existence
         if category_column is not None and category_column not in df.columns:
-            raise ValueError(f"Category column '{category_column}' not found in DataFrame")
+            raise ValueError(
+                f"Category column '{category_column}' not found in DataFrame"
+            )
         if numeric_column is not None and numeric_column not in df.columns:
-            raise ValueError(f"Numeric column '{numeric_column}' not found in DataFrame")
+            raise ValueError(
+                f"Numeric column '{numeric_column}' not found in DataFrame"
+            )
 
         # Prepare grouping columns
         group_cols = [gars_column]
@@ -196,23 +179,25 @@ class GARSPandas:
         # Perform aggregation based on stats type
         if stats == "count":
             result = df.groupby(group_cols).size().reset_index(name=stats)
-            
+
         elif stats in ["sum", "min", "max", "mean", "median", "std", "var"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
             result = df.groupby(group_cols)[numeric_column].agg(stats).reset_index()
-            
+
         elif stats == "range":
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            result = df.groupby(group_cols)[numeric_column].agg(['min', 'max']).reset_index()
-            result[stats] = result['max'] - result['min']
-            result = result.drop(['min', 'max'], axis=1)
-            
+            result = (
+                df.groupby(group_cols)[numeric_column].agg(["min", "max"]).reset_index()
+            )
+            result[stats] = result["max"] - result["min"]
+            result = result.drop(["min", "max"], axis=1)
+
         elif stats in ["minority", "majority", "variety"]:
             if not numeric_column:
                 raise ValueError(f"numeric_column must be provided for stats='{stats}'")
-            
+
             # Define categorical aggregation function
             def cat_agg_func(x):
                 values = x[numeric_column].dropna()
@@ -228,20 +213,38 @@ class GARSPandas:
 
             if category_column:
                 # Handle categorical aggregation with category grouping
-                all_categories = sorted([str(cat) for cat in df[category_column].unique()])
-                result = df.groupby([gars_column, category_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
-                result = result.pivot(index=gars_column, columns=category_column, values=stats)
-                result = result.reindex(columns=all_categories, fill_value=0 if stats == "variety" else None)
+                all_categories = sorted(
+                    [str(cat) for cat in df[category_column].unique()]
+                )
+                result = (
+                    df.groupby([gars_column, category_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
+                result = result.pivot(
+                    index=gars_column, columns=category_column, values=stats
+                )
+                result = result.reindex(
+                    columns=all_categories, fill_value=0 if stats == "variety" else None
+                )
                 result = result.reset_index()
-                result.columns = [gars_column] + [f"{cat}_{stats}" for cat in all_categories]
+                result.columns = [gars_column] + [
+                    f"{cat}_{stats}" for cat in all_categories
+                ]
             else:
                 # Handle categorical aggregation without category grouping
-                result = df.groupby([gars_column]).apply(cat_agg_func, include_groups=False).reset_index(name=stats)
+                result = (
+                    df.groupby([gars_column])
+                    .apply(cat_agg_func, include_groups=False)
+                    .reset_index(name=stats)
+                )
         else:
             raise ValueError(f"Unknown stats: {stats}")
 
         # Handle column renaming for non-categorical stats
-        if len(result.columns) > len(group_cols) and not (category_column and stats in ["minority", "majority", "variety"]):
+        if len(result.columns) > len(group_cols) and not (
+            category_column and stats in ["minority", "majority", "variety"]
+        ):
             result = result.rename(columns={result.columns[-1]: stats})
 
         # Handle category pivoting for non-categorical stats
@@ -251,10 +254,14 @@ class GARSPandas:
             else:
                 try:
                     # Pivot categories to columns
-                    result = result.pivot(index=gars_column, columns=category_column, values=stats)
-                    result = result.fillna(0)
+                    result = result.pivot(
+                        index=gars_column, columns=category_column, values=stats
+                    )
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=["number"]).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
-                    
+
                     # Rename columns with category prefixes
                     new_columns = [gars_column]
                     for col in sorted(result.columns[1:]):
@@ -342,6 +349,52 @@ class GARSPandas:
         )
         result = self._df.join(result)
         return finalizer(result)
+
+    def _gars_ids_to_geometries(self, gars_ids) -> list:
+        """Helper method to process gars IDs into geometries.
+
+        Parameters
+        ----------
+        gars_ids : pandas.Series or list
+            GARS IDs to process
+
+        Returns
+        -------
+        list
+            List of geometries (Polygon or MultiPolygon objects)
+        """
+        geometries = []
+        for g_ids in gars_ids:
+            try:
+                if pd.isna(g_ids):
+                    # Handle NaN values - create empty geometry
+                    geometries.append(Polygon())
+                elif isinstance(g_ids, list):
+                    # Handle list of gars_ids - create a MultiPolygon
+                    if len(g_ids) == 0:
+                        # Handle empty list - create empty geometry
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Handle single gars_id
+                    geometries.append(gars_to_geo(g_ids))
+            except (ValueError, TypeError):
+                if isinstance(g_ids, list):
+                    if len(g_ids) == 0:
+                        geometries.append(Polygon())
+                    else:
+                        cell_geometries = [gars_to_geo(g_id) for g_id in g_ids]
+                        geometries.append(MultiPolygon(cell_geometries))
+                else:
+                    # Try to handle as single gars_id
+                    try:
+                        geometries.append(gars_to_geo(g_ids))
+                    except Exception:
+                        # If all else fails, create empty geometry
+                        geometries.append(Polygon())
+        return geometries
 
     @staticmethod
     def _format_resolution(resolution: int) -> str:
