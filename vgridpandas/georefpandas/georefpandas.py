@@ -245,7 +245,9 @@ class GEOREFPandas:
                     result = result.pivot(
                         index=georef_column, columns=category_column, values=stats
                     )
-                    result = result.fillna(0)
+                    # Fill NaN values but avoid geometry columns to prevent GeoPandas warning
+                    numeric_cols = result.select_dtypes(include=['number']).columns
+                    result[numeric_cols] = result[numeric_cols].fillna(0)
                     result = result.reset_index()
 
                     # Rename columns with category prefixes
