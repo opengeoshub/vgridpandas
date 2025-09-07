@@ -84,18 +84,22 @@ class DGGRIDPandas:
         self,
         dggrid_instance,
         dggs_type: str,
-        dggrid_column: str = None,
         resolution: int = None,
-        address_type: str = "SEQNUM",
+        dggrid_column: str = None,
+        address_type: str = "SEQNUM"
     ) -> GeoDataFrame:
         """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
 
         Parameters
         ----------
+        dggrid_instance : DGGRIDv7
+            DGGRID instance
+        dggs_type : str
+            DGGRID type
+        resolution : int, optional
+            DGGRID resolution
         dggrid_column : str, optional
             Name of the column containing DGGRID ids. If None, assumes DGGRID ids are in the index.
-        resolution : int
-            DGGRID resolution
         address_type : str
             Address type, default 'SEQNUM'
         Returns
@@ -107,9 +111,10 @@ class DGGRIDPandas:
         ValueError
             When an invalid DGGRID id is encountered
         """
-
-        # Handle case where resolution is passed as positional argument instead of dggrid_column
-        if dggrid_column is not None and isinstance(dggrid_column, int):
+   
+        # Handle backward compatibility: if resolution is passed as positional argument
+        # and dggrid_column is None, then the third argument is resolution
+        if resolution is None and dggrid_column is not None and isinstance(dggrid_column, int):
             # If dggrid_column is an integer, it's actually the resolution parameter
             resolution = dggrid_column
             dggrid_column = None
@@ -144,10 +149,11 @@ class DGGRIDPandas:
                 return gpd.GeoDataFrame(result_df, crs="epsg:4326")
             else:
                 # DGGRID ids are in the index
+                def dggrid_id_to_geometry(dggrid_id):
+                    return dggrid_to_geo(dggrid_instance, dggs_type, dggrid_id, resolution, address_type)
+                
                 return self._apply_index_assign(
-                    wrapped_partial(
-                        dggrid_to_geo, dggrid_instance, dggs_type, resolution, address_type
-                    ),
+                    dggrid_id_to_geometry,
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
                 )
@@ -316,7 +322,7 @@ class DGGRIDPandas:
         # Add geometry if requested
         result = result.set_index(dggrid_column)
         if return_geometry:
-            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, dggrid_column=None, resolution=resolution, address_type=address_type)              
+            result = result.dggrid.dggrid2geo(dggrid_instance, dggs_type, resolution=resolution, dggrid_column=None, address_type=address_type)              
         return result.reset_index()
 
     def _dggrid_ids_to_geometries(
