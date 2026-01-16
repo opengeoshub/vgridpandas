@@ -23,7 +23,7 @@ To work with Vgrid DGGS in QGIS, install the [Vgrid Plugin](https://plugins.qgis
 
 To visualize DGGS in Maplibre GL JS, try the [vgrid-maplibre](https://www.npmjs.com/package/vgrid-maplibre) library.
 
-For an interactive demo, visit the [Vgrid Homepage](https://vgrid.vn).
+For an interactive demo, visit the [Vgrid Homepage](https://vgridhome.gishub.vn).
 
 
 ## Installation
