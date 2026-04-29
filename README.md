@@ -1,5 +1,5 @@
 # VgridPandas
-**VgridPandas - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/) by [Daniel Jahn](https://github.com/DahnJ)**
+**VgridPandas - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/) by [Daniel Jahn](https://github.com/DahnJ)**.
 
 VgridPandas supports a wide range of popular geodesic DGGS including H3, S2, A5, rHEALPix, Open-EAGGR ISEA4T, EASE-DGGS, DGGAL, DGGRID, QTM, as well as graticule-based DGGS such as OLC, Geohash, MGRS, GEOREF, TileCode, Quadkey, Maidenhead, and GARS.
 
