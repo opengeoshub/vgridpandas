@@ -6,12 +6,14 @@ from shapely.geometry import (
     MultiPolygon,
     LineString,
     MultiLineString,
+    box,
 )
+from collections import deque
 import geopandas as gpd
+import a5
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_a5_resolution
-from vgrid.conversion.latlon2dggs import latlon2a5
-from vgrid.conversion.dggs2geo.a52geo import a52geo
+from vgrid.conversion.dggs2geo.a52geo import a52geo, a52geo_u64
 from vgrid.conversion.dggscompact.a5compact import a5compact
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
@@ -19,7 +21,7 @@ MultiLineOrLine = Union[LineString, MultiLineString]
 MultiPointOrPoint = Union[Point, MultiPoint]
 
 
-def poly2a5(geometry, resolution, predicate=None, compact=False):
+def poly2a5(geometry, resolution, predicate=None, compact=False, fix_antimeridian=False):
     """
     Convert polygon geometries (Polygon, MultiPolygon) to A5 grid cells.
 
@@ -27,7 +29,7 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
         resolution (int): A5 resolution level [0..29]
         geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
         predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
-
+        fix_antimeridian (bool, optional): Fix antimeridian cells if True.
     Returns:
         list: List of A5 hexes intersecting the polygon
 
@@ -49,67 +51,55 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
         return []
 
     for poly in polys:
+        if poly is None or poly.is_empty:
+            continue
+
         min_lng, min_lat, max_lng, max_lat = poly.bounds
-        # Calculate longitude and latitude width based on resolution
-        if resolution == 1:
-            lon_width = 20
-            lat_width = 20
-        elif resolution == 2:
-            lon_width = 10
-            lat_width = 10
-        elif resolution == 3:
-            lon_width = 5
-            lat_width = 5
-        elif resolution > 3:
-            base_width = 5  # at resolution 3
-            factor = 0.5 ** (resolution - 3)
-            lon_width = base_width * factor
-            lat_width = base_width * factor
-        else:
-            # For resolution 0, use larger width
-            lon_width = 40
-            lat_width = 40
+        bbox_polygon = box(min_lng, min_lat, max_lng, max_lat)
 
-        # Generate longitude and latitude arrays
-        longitudes = []
-        latitudes = []
+        bbox_center_lon = bbox_polygon.centroid.x
+        bbox_center_lat = bbox_polygon.centroid.y
+        seed_cell_id = a5.lonlat_to_cell((bbox_center_lon, bbox_center_lat), resolution)
+        seed_cell_polygon = a52geo_u64(
+            seed_cell_id, split_antimeridian=fix_antimeridian
+        )
 
-        lon = min_lng
-        while lon < max_lng:
-            longitudes.append(lon)
-            lon += lon_width
+        if seed_cell_polygon is not None and seed_cell_polygon.contains(bbox_polygon):
+            seed_cell_hex = a5.u64_to_hex(seed_cell_id)
+            if check_predicate(seed_cell_polygon, poly, predicate):
+                a5_hexes.append(seed_cell_hex)
+            continue
 
-        lat = min_lat
-        while lat < max_lat:
-            latitudes.append(lat)
-            lat += lat_width
+        intersecting_cells = {}  # {cell_u64: cell_polygon}
+        covered_cells = set()
+        queue = deque([seed_cell_id])
 
-        seen_a5_hex = set()  # Track unique A5 hex codes
+        while queue:
+            current_cell_id = queue.popleft()
+            if current_cell_id in covered_cells:
+                continue
+            covered_cells.add(current_cell_id)
 
-        for lon in longitudes:
-            for lat in latitudes:
-                min_lon = lon
-                min_lat = lat
-                max_lon = lon + lon_width
-                max_lat = lat + lat_width
+            cell_polygon = a52geo_u64(
+                current_cell_id, split_antimeridian=fix_antimeridian
+            )
+            if cell_polygon is None or cell_polygon.is_empty:
+                continue
 
-                # Calculate centroid
-                centroid_lat = (min_lat + max_lat) / 2
-                centroid_lon = (min_lon + max_lon) / 2
+            if cell_polygon.intersects(bbox_polygon):
+                intersecting_cells[current_cell_id] = cell_polygon
+                neighbors = a5.uncompact(
+                    a5.grid_disk_vertex(current_cell_id, 1), resolution
+                )
+                for neighbor_id in neighbors:
+                    if neighbor_id not in covered_cells:
+                        queue.append(neighbor_id)
 
-                try:
-                    # Convert centroid to A5 cell ID using direct A5 functions
-                    a5_hex = latlon2a5(centroid_lat, centroid_lon, resolution)
-                    cell_polygon = a52geo(a5_hex)
+        for cell_id, cell_polygon in intersecting_cells.items():
+            if check_predicate(cell_polygon, poly, predicate):
+                a5_hexes.append(a5.u64_to_hex(cell_id))
 
-                    # Only process if this A5 hex code hasn't been seen before
-                    if a5_hex not in seen_a5_hex:
-                        seen_a5_hex.add(a5_hex)
-                        if check_predicate(cell_polygon, poly, predicate):
-                            a5_hexes.append(a5_hex)
-                except Exception:
-                    # Skip cells that can't be processed
-                    continue
+    a5_hexes = list(dict.fromkeys(a5_hexes))
 
     if compact and a5_hexes:
         # Create a GeoDataFrame with A5 hex codes and their geometries
@@ -117,7 +107,7 @@ def poly2a5(geometry, resolution, predicate=None, compact=False):
         for a5_hex in a5_hexes:
             try:
                 # Convert A5 hex to geometry
-                geometry = a52geo(a5_hex)
+                geometry = a52geo(a5_hex, fix_antimeridian=fix_antimeridian)        
                 a5_data.append({"a5": a5_hex, "geometry": geometry})
             except Exception:
                 # Skip invalid A5 hex codes
@@ -142,6 +132,7 @@ def polyfill(
     resolution: int,
     predicate: str = None,
     compact: bool = False,
+    fix_antimeridian: bool = False,
 ) -> Set[str]:
     """a5.polyfill accepting a shapely (Multi)Polygon or (Multi)LineString
 
@@ -151,7 +142,8 @@ def polyfill(
         Polygon to fill
     resolution : int
         A5 resolution of the filling cells
-
+    fix_antimeridian : bool, optional
+        Fix antimeridian cells if True.
     Returns
     -------
     Set of A5 Tokens
@@ -161,8 +153,8 @@ def polyfill(
     TypeError if geometry is not a Polygon or MultiPolygon
     """
     if isinstance(geometry, (Polygon, MultiPolygon)):
-        return set(poly2a5(geometry, resolution, predicate, compact))
+        return set(poly2a5(geometry, resolution, predicate, compact, fix_antimeridian))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2a5(geometry, resolution, predicate="intersect", compact=False))
+        return set(poly2a5(geometry, resolution, predicate="intersect", compact=False, fix_antimeridian=fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")

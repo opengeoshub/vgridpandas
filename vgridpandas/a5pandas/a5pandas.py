@@ -68,15 +68,16 @@ class A5Pandas:
             return df.set_index(a5_column)
         return df
 
-    def a52geo(self, a5_column: str = None) -> GeoDataFrame:
-        """Add geometry with A5 geometry to the DataFrame. Assumes A5 hex.
+    def a52geo(self, a5_column: str = None, fix_antimeridian: bool = False) -> GeoDataFrame:
+        """Add geometry with A5 geometry to the DataFrame. Assumes A5 hex.  Fix antimeridian cells if True.
 
         Parameters
         ----------
         a5_column : str, optional
             Name of the column containing A5 hexes. If None, first checks for 'a5' column,
             then assumes A5 hexes are in the index.
-
+        fix_antimeridian : bool, optional
+            Fix antimeridian cells if True.
         Returns
         -------
         GeoDataFrame with A5 geometry
@@ -115,7 +116,7 @@ class A5Pandas:
             else:
                 # A5 hexes are in the index
                 return self._apply_index_assign(
-                    wrapped_partial(a5_to_geo),
+                    wrapped_partial(a5_to_geo, fix_antimeridian=fix_antimeridian),
                     "geometry",
                     finalizer=lambda x: gpd.GeoDataFrame(x, crs="epsg:4326"),
                 )
@@ -130,6 +131,7 @@ class A5Pandas:
         predicate: str = None,
         compact: bool = False,
         explode: bool = False,
+        fix_antimeridian: bool = False,
     ) -> AnyDataFrame:
         """
         Parameters
@@ -147,7 +149,7 @@ class A5Pandas:
         """
 
         def func(row):
-            return list(polyfill(row.geometry, resolution, predicate, compact))
+            return list(polyfill(row.geometry, resolution, predicate, compact, fix_antimeridian))
 
         result = self._df.apply(func, axis=1)
 

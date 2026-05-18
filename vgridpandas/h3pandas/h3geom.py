@@ -3,7 +3,6 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString,
 from shapely.ops import transform
 import h3
 from vgridpandas.utils.decorator import sequential_deduplication
-from vgrid.utils.geometry import fix_h3_antimeridian_cells
 from vgrid.utils.geometry import check_predicate
 from vgrid.conversion.dggs2geo.h32geo import h32geo
 from vgrid.utils.geometry import geodesic_buffer
@@ -12,7 +11,7 @@ MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
 
-def poly2h3(geometry, resolution, predicate=None, compact=False):
+def poly2h3(geometry, resolution, predicate=None, compact=False, fix_antimeridian=None):
     """
     Convert polygon geometries (Polygon, MultiPolygon) to H3 grid cells.
 
@@ -21,7 +20,7 @@ def poly2h3(geometry, resolution, predicate=None, compact=False):
         geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
         predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
         compact (bool): Enable H3 compact mode
-
+        fix_antimeridian (bool): Fix antimeridian cells 
     Returns:
         list: List of H3 IDs intersecting the polygon
 
@@ -49,7 +48,7 @@ def poly2h3(geometry, resolution, predicate=None, compact=False):
             bbox_buffer_cells = h3.compact_cells(bbox_buffer_cells)
 
         for bbox_buffer_cell in bbox_buffer_cells:
-            cell_polygon = h32geo(bbox_buffer_cell)
+            cell_polygon = h32geo(bbox_buffer_cell, fix_antimeridian=fix_antimeridian)
             if not check_predicate(cell_polygon, poly, predicate):
                 continue
             h3_ids.append(bbox_buffer_cell)
@@ -62,6 +61,7 @@ def polyfill(
     resolution: int,
     predicate: str = None,
     compact: bool = False,
+    fix_antimeridian: bool = None,
 ) -> Set[str]:
     """h3.polyfill accepting a shapely (Multi)Polygon or (Multi)LineString
 
@@ -75,6 +75,8 @@ def polyfill(
         Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
     compact : bool, optional
         Enable H3 compact mode
+    fix_antimeridian : bool, optional
+        Fix antimeridian cells
 
     Returns
     -------
@@ -85,14 +87,14 @@ def polyfill(
     TypeError if geometry is not a supported type
     """
     if isinstance(geometry, (Polygon, MultiPolygon)):
-        return set(poly2h3(geometry, resolution, predicate, compact))
+        return set(poly2h3(geometry, resolution, predicate, compact, fix_antimeridian))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        return set(poly2h3(geometry, resolution, predicate="intersect", compact=False))
+        return set(poly2h3(geometry, resolution, predicate="intersect", compact=False, fix_antimeridian=fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
 
 
-def polyfill_native(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
+def polyfill_native(geometry: MultiPolyOrPoly, resolution: int, fix_antimeridian: bool = None) -> Set[str]:
     """h3.polyfill accepting a shapely (Multi)Polygon
 
     Parameters
@@ -101,7 +103,8 @@ def polyfill_native(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
         Polygon to fill
     resolution : int
         H3 resolution of the filling cells
-
+    fix_antimeridian : bool, optional
+        Fix antimeridian cells
     Returns
     -------
     Set of H3 IDs
@@ -111,13 +114,13 @@ def polyfill_native(geometry: MultiPolyOrPoly, resolution: int) -> Set[str]:
     TypeError if geometry is not a Polygon or MultiPolygon
     """
     if isinstance(geometry, (Polygon, MultiPolygon)):
-        h3shape = h3.geo_to_h3shape(geometry)
-        return set(h3.polygon_to_cells(h3shape, resolution))
+        h3shape = h32geo(geometry, fix_antimeridian=fix_antimeridian)
+        return set(h32geo(h3shape, resolution, fix_antimeridian=fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
 
 
-def cell_to_boundary_lng_lat(h3_id: str) -> Polygon:
+def cell_to_boundary_lng_lat(h3_id: str, fix_antimeridian: bool = None) -> Polygon:
     """h3.h3_to_geo_boundary equivalent for shapely
 
     Parameters
@@ -129,9 +132,8 @@ def cell_to_boundary_lng_lat(h3_id: str) -> Polygon:
     -------
     Polygon representing the H3 cell boundary
     """
-    boundary = h3.cell_to_boundary(h3_id)
-    fixed_boundary = fix_h3_antimeridian_cells(boundary)
-    return _switch_lat_lng(Polygon(fixed_boundary))
+    boundary = h32geo(h3_id, fix_antimeridian=fix_antimeridian)
+    return _switch_lat_lng(Polygon(boundary))
 
 
 def _switch_lat_lng(geometry: MultiPolyOrPoly) -> MultiPolyOrPoly:
