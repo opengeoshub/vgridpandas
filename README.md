@@ -49,7 +49,7 @@ import pandas as pd
 from vgridpandas import h3pandas
 df = pd.DataFrame({'lat': [10, 11], 'lon': [106, 107]})
 resolution = 10
-df = df.h3.latlon2h3(resolution)
+df = df.h3.latlon2h3(resolution, lat_col = 'lat', lat_col = 'lon')
 df
 
 | h3              |   lat |   lon |
@@ -58,7 +58,7 @@ df
 | 8a65b0b68237fff |    11 |   107 |
 ```
 
-### DGGS to geo boundary
+### DGGS to geo
 ```python
 df = df.h3.h32geo()
 df
@@ -74,15 +74,15 @@ df
 import geopandas as gpd
 from vgridpandas import s2pandas
 
-gdf = gpd.read_file('https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/shape/polygon.geojson')
+gdf = gpd.read_file('https://raw.githubusercontent.com/opengeoshub/vopendata/main/shape/polygon.geojson')
 resolution = 18
-gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "largest_overlap")
+gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "intersects")
 gdf_polyfill.head()
 gdf_polyfill = gdf_polyfill.s2.s22geo("s2")
 gdf_polyfill.plot(edgecolor = "white")
 ```
 <div align="center">
-  <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/vector2s2_compacted.png">
+  <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/vertor2s2_compact.png">
 </div>
 
 ### DGGS Binning
@@ -92,7 +92,6 @@ import geopandas as gpd
 from vgridpandas import a5pandas
 resolution = 15
 df = pd.read_csv("https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/csv/dist1_pois.csv")
-# df = gpd.read_file("https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/shape/dist1_pois.geojson")
 stats = "count"
 df_bin = df.a5.a5bin(resolution=resolution, stats = stats, 
                     # numeric_column="confidence",
