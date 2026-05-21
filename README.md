@@ -76,7 +76,7 @@ from vgridpandas import s2pandas
 
 gdf = gpd.read_file('https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/shape/polygon.geojson')
 resolution = 18
-gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "largest_overlap", explode = True)
+gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "largest_overlap")
 gdf_polyfill.head()
 gdf_polyfill = gdf_polyfill.s2.s22geo("s2")
 gdf_polyfill.plot(edgecolor = "white")
