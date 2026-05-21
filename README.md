@@ -82,7 +82,7 @@ gdf_polyfill = gdf_polyfill.s2.s22geo("s2")
 gdf_polyfill.plot(edgecolor = "white")
 ```
 <div align="center">
-  <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/vertor2s2_compact.png">
+  <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/vertor2s2_compacted.png">
 </div>
 
 ### DGGS Binning
