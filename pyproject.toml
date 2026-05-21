@@ -47,5 +47,6 @@ ignore = ["E203"]
 [tool.ruff.lint.pycodestyle]
 max-line-length = 88
 
-# [tool.pytest.ini_options]
-# filterwarnings = ["ignore::UserWarning"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning"]
