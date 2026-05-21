@@ -40,7 +40,7 @@ jobs:
 
             - name: Install optional dependencies
               run: |
-                  uv pip install pytest
+                  uv pip install ".[test]"
                   uv pip install -r requirements_dev.txt
 
             - name: Test import
