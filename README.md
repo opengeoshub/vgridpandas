@@ -1,5 +1,5 @@
 # VgridPandas
-**VgridPandas - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/)**
+**VgridPandas - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/) by [Daniel Jahn](https://github.com/DahnJ)**.
 
 VgridPandas supports a wide range of popular geodesic DGGS including H3, S2, A5, rHEALPix, Open-EAGGR ISEA4T, EASE-DGGS, DGGAL, DGGRID, QTM, as well as graticule-based DGGS such as OLC, Geohash, MGRS, GEOREF, TileCode, Quadkey, Maidenhead, and GARS.
 
@@ -23,7 +23,7 @@ To work with Vgrid DGGS in QGIS, install the [Vgrid Plugin](https://plugins.qgis
 
 To visualize DGGS in Maplibre GL JS, try the [vgrid-maplibre](https://www.npmjs.com/package/vgrid-maplibre) library.
 
-For an interactive demo, visit the [Vgrid Homepage](https://vgrid.vn).
+For an interactive demo, visit the [Vgrid Homepage](https://vgridhome.gishub.vn).
 
 
 ## Installation
@@ -76,7 +76,7 @@ from vgridpandas import s2pandas
 
 gdf = gpd.read_file('https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/shape/polygon.geojson')
 resolution = 18
-gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "largest_overlap", explode = True)
+gdf_polyfill = gdf.s2.polyfill(resolution, compact = True, predicate = "largest_overlap")
 gdf_polyfill.head()
 gdf_polyfill = gdf_polyfill.s2.s22geo("s2")
 gdf_polyfill.plot(edgecolor = "white")

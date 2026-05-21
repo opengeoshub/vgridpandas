@@ -3,22 +3,7 @@ from typing import Callable, Iterator
 
 
 def catch_invalid_dggs_id(f: Callable) -> Callable:
-    """Wrapper that catches potential invalid  DGGS ID.
-
-    Parameters
-    ----------
-    f : Callable
-
-    Returns
-    -------
-    The return value of f, or a ValueError if f threw ValueError, TypeError,
-    or DGGSCellError
-
-    Raises
-    ------
-    ValueError
-        When an invalid DGGS ID is encountered
-    """
+    """Wrapper that catches potential invalid  DGGS ID."""
 
     @wraps(f)
     def safe_f(*args, **kwargs):
@@ -34,18 +19,7 @@ def catch_invalid_dggs_id(f: Callable) -> Callable:
 
 
 def sequential_deduplication(func: Iterator[str]) -> Iterator[str]:
-    """
-    Decorator that doesn't permit two consecutive items of an iterator
-    to be the same.
-
-    Parameters
-    ----------
-    f : Callable
-
-    Returns
-    -------
-    Yields from f, but won't yield two items in a row that are the same.
-    """
+    """Decorator that doesn't permit two consecutive items of an iterator to be the same."""
 
     def inner(*args):
         iterable = func(*args)
@@ -58,9 +32,8 @@ def sequential_deduplication(func: Iterator[str]) -> Iterator[str]:
     return inner
 
 
-# TODO: Test
 def doc_standard(column_name: str, description: str) -> Callable:
-    """Wrapper to provide a standard apply-to-DGGS-id docstring"""
+    """Wrapper to provide a standard apply-to-DGGS-id docstring."""
 
     def doc_decorator(f):
         @wraps(f)
@@ -68,7 +41,6 @@ def doc_standard(column_name: str, description: str) -> Callable:
             return f(*args, **kwargs)
 
         parameters = f.__doc__ or ""
-
         doc = f"""Adds the column `{column_name}` {description}. Assumes DGGS ID.
         {parameters}
         Returns
@@ -80,7 +52,6 @@ def doc_standard(column_name: str, description: str) -> Callable:
         ValueError
             When an invalid DGGS address is encountered
         """
-
         doc_f.__doc__ = doc
         return doc_f
 
@@ -93,5 +64,4 @@ def _print_signature(*args, **kwargs):
         signature.append(", ".join([repr(a) for a in args]))
     if kwargs:
         signature.append(", ".join({f"{repr(k)}={repr(v)}" for k, v in kwargs.items()}))
-
     return ", ".join(signature)
