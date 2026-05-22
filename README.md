@@ -9,7 +9,7 @@ VgridPandas supports a wide range of DGGSs, including H3, S2, A5, rHEALPix, DGGA
 [![image](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/opengeoshub/vgridpandas/blob/main)
 [![image](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/opengeoshub/vgridpandas/HEAD?filepath=docs/notebooks)
 [![image](https://studiolab.sagemaker.aws/studiolab.svg)](https://studiolab.sagemaker.aws/import/github/opengeoshub/vgridpandas/blob/main/docs/notebooks/00_intro.ipynb)
-[![image](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://demo.gishub.vn/lab/index.html?path=notebooks/vgridpandas/00_intro.ipynb)
+[![image](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://jupyterlite.gishub.vn/lab/index.html?path=notebooks/vgridpandas/00_intro.ipynb)
 [![PyPI version](https://badge.fury.io/py/vgridpandas.svg)](https://badge.fury.io/py/vgridpandas)
 [![image](https://static.pepy.tech/badge/vgridpandas)](https://pepy.tech/project/vgridpandas)
 [![image](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
