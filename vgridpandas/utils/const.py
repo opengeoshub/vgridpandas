@@ -1,6 +1,6 @@
 H3_COL = "h3"
 S2_COL = "s2"
-COL_A5 = "a5"
+A5_COL = "a5"
 RHEALPIX_COL = "rhealpix"
 ISEA4T_COL = "isea4t"
 ISEA3H_COL = "isea3h"
