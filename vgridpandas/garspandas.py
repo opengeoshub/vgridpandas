@@ -7,7 +7,7 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
-
+from vgridpandas.utils.const import GARS_COL
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
@@ -61,11 +61,11 @@ class GARSPandas:
         ]
 
         # gars_column = self._format_resolution(resolution)
-        gars_column = "gars"
-        assign_arg = {gars_column: gars_ids, "gars_res": resolution}
+        gars_col = GARS_COL
+        assign_arg = {gars_col: gars_ids, f"{gars_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(gars_column)
+            return df.set_index(gars_col)
         return df
 
     def gars2geo(self, gars_col: str = None) -> GeoDataFrame:
@@ -75,9 +75,9 @@ class GARSPandas:
                 raise ValueError(f"Column '{gars_col}' not found in DataFrame")
             ids = self._df[gars_col]
         else:
-            if "gars" not in self._df.columns:
-                raise ValueError("Column 'gars' not found in DataFrame")
-            ids = self._df["gars"]
+            if GARS_COL not in self._df.columns:
+                raise ValueError(f"Column '{GARS_COL}' not found in DataFrame")
+            ids = self._df[GARS_COL]
         return dggs_ids_to_geodataframe(self._df, ids, gars_to_geo)
 
     def garsbin(
@@ -92,7 +92,7 @@ class GARSPandas:
         """
         Bin points into gars cells and compute statistics.
         """
-        gars_col = "gars"
+        gars_col = GARS_COL
         df = self.latlon2gars(resolution, lat_col, lon_col)
         result = aggregate_bin(df, gars_col, stats, numeric_col, category_col)
         return result.gars.gars2geo(gars_col=gars_col)

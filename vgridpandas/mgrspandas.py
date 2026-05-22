@@ -1,4 +1,5 @@
 from typing import Union
+from vgridpandas.utils.const import MGRS_COL
 from vgrid.conversion.latlon2dggs import latlon2mgrs as latlon_to_mgrs
 from vgrid.conversion.dggs2geo.mgrs2geo import mgrs2geo as mgrs_to_geo
 from pandas.core.frame import DataFrame
@@ -61,11 +62,11 @@ class MGRSPandas:
         ]
 
         # mgrs_column = self._format_resolution(resolution)
-        mgrs_column = "mgrs"
-        assign_arg = {mgrs_column: mgrs_ids, "mgrs_res": resolution}
+        mgrs_col = MGRS_COL
+        assign_arg = {mgrs_col: mgrs_ids, f"{mgrs_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(mgrs_column)
+            return df.set_index(mgrs_col)
         return df
 
     def mgrs2geo(self, mgrs_col: str = None) -> GeoDataFrame:
@@ -75,9 +76,9 @@ class MGRSPandas:
                 raise ValueError(f"Column '{mgrs_col}' not found in DataFrame")
             ids = self._df[mgrs_col]
         else:
-            if "mgrs" not in self._df.columns:
-                raise ValueError("Column 'mgrs' not found in DataFrame")
-            ids = self._df["mgrs"]
+            if MGRS_COL not in self._df.columns:
+                raise ValueError(f"Column '{MGRS_COL}' not found in DataFrame")
+            ids = self._df[MGRS_COL]
         return dggs_ids_to_geodataframe(self._df, ids, mgrs_to_geo)
 
     def mgrsbin(
@@ -92,7 +93,7 @@ class MGRSPandas:
         """
         Bin points into mgrs cells and compute statistics.
         """
-        mgrs_col = "mgrs"
+        mgrs_col = MGRS_COL
         df = self.latlon2mgrs(resolution, lat_col, lon_col)
         result = aggregate_bin(df, mgrs_col, stats, numeric_col, category_col)
         return result.mgrs.mgrs2geo(mgrs_col=mgrs_col)

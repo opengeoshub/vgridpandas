@@ -14,7 +14,7 @@ from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
 from vgrid.conversion.dggs2geo.olc2geo import olc2geo as olc_to_geo
-from vgridpandas.utils.const import COLUMN_OLC_POLYFILL
+from vgridpandas.utils.const import OLC_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -161,12 +161,11 @@ class OLCPandas:
 
         olc_ids = [latlon_to_olc(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
-        # olc_column = self._format_resolution(resolution)
-        olc_column = "olc"
-        assign_arg = {olc_column: olc_ids, "olc_res": resolution}
+        olc_col = OLC_COL
+        assign_arg = {olc_col: olc_ids, f"{olc_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(olc_column)
+            return df.set_index(olc_col)
         return df
 
     def olc2geo(self, olc_col: str = None) -> GeoDataFrame:
@@ -176,9 +175,9 @@ class OLCPandas:
                 raise ValueError(f"Column '{olc_col}' not found in DataFrame")
             ids = self._df[olc_col]
         else:
-            if "olc" not in self._df.columns:
-                raise ValueError("Column 'olc' not found in DataFrame")
-            ids = self._df["olc"]
+            if OLC_COL not in self._df.columns:
+                raise ValueError(f"Column '{OLC_COL}' not found in DataFrame")
+            ids = self._df[OLC_COL]
         return dggs_ids_to_geodataframe(self._df, ids, olc_to_geo)
 
     def polyfill(
@@ -208,10 +207,10 @@ class OLCPandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_OLC_POLYFILL: result}
+            assign_args = {OLC_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_OLC_POLYFILL)
+        result = result.explode().to_frame(OLC_COL)
         return self._df.join(result)
 
     def olcbin(
@@ -226,10 +225,7 @@ class OLCPandas:
         """
         Bin points into olc cells and compute statistics.
         """
-        olc_col = "olc"
+        olc_col = OLC_COL
         df = self.latlon2olc(resolution, lat_col, lon_col)
         result = aggregate_bin(df, olc_col, stats, numeric_col, category_col)
         return result.olc.olc2geo(olc_col=olc_col)
-
-    def _format_resolution(resolution: int) -> str:
-        return f"olc_{str(resolution).zfill(2)}"

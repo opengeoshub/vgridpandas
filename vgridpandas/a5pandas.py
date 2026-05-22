@@ -24,7 +24,7 @@ from vgrid.conversion.dggs2geo.a52geo import a52geo as a5_to_geo, a52geo_u64
 from vgrid.conversion.dggscompact.a5compact import a5compact
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_a5_resolution
-from vgridpandas.utils.const import COLUMN_A5_POLYFILL
+from vgridpandas.utils.const import A5_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -34,7 +34,7 @@ MultiPointOrPoint = Union[Point, MultiPoint]
 
 
 def poly2a5(
-    geometry, resolution, predicate=None, compact=False, fix_antimeridian=False
+    geometry, resolution, predicate=None, compact=False, split_antimeridian: bool = False
 ):
     """
     Convert polygon geometries (Polygon, MultiPolygon) to A5 grid cells.
@@ -43,7 +43,7 @@ def poly2a5(
         resolution (int): A5 resolution level [0..29]
         geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
         predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
-        fix_antimeridian (bool, optional): Fix antimeridian cells if True.
+        split_antimeridian (bool, optional): Split antimeridian-crossing cells if True.
     Returns:
         list: List of A5 hexes intersecting the polygon
 
@@ -75,7 +75,7 @@ def poly2a5(
         bbox_center_lat = bbox_polygon.centroid.y
         seed_cell_id = a5.lonlat_to_cell((bbox_center_lon, bbox_center_lat), resolution)
         seed_cell_polygon = a52geo_u64(
-            seed_cell_id, split_antimeridian=fix_antimeridian
+            seed_cell_id, split_antimeridian=split_antimeridian
         )
 
         if seed_cell_polygon is not None and seed_cell_polygon.contains(bbox_polygon):
@@ -95,7 +95,7 @@ def poly2a5(
             covered_cells.add(current_cell_id)
 
             cell_polygon = a52geo_u64(
-                current_cell_id, split_antimeridian=fix_antimeridian
+                current_cell_id, split_antimeridian=split_antimeridian
             )
             if cell_polygon is None or cell_polygon.is_empty:
                 continue
@@ -121,7 +121,7 @@ def poly2a5(
         for a5_hex in a5_hexes:
             try:
                 # Convert A5 hex to geometry
-                geometry = a5_to_geo(a5_hex, fix_antimeridian=fix_antimeridian)
+                geometry = a5_to_geo(a5_hex, split_antimeridian=split_antimeridian)
                 a5_data.append({"a5": a5_hex, "geometry": geometry})
             except Exception:
                 # Skip invalid A5 hex codes
@@ -169,12 +169,12 @@ def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
 
 
 def polyfill_row(
-    geometry, resolution, predicate=None, compact=False, fix_antimeridian=None
+    geometry, resolution, predicate=None, compact=False, split_antimeridian: bool = False
 ) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(
-            poly2a5(geometry, resolution, predicate, compact, fix_antimeridian)
+            poly2a5(geometry, resolution, predicate, compact, split_antimeridian)
         )
     elif isinstance(geometry, (LineString, MultiLineString)):
         tokens = set(linetrace(geometry, resolution))
@@ -228,30 +228,36 @@ class A5Pandas:
         a5_hexes = [latlon_to_a5(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
         # a5_col = self._format_resolution(resolution)
-        a5_col = "a5"
-        assign_arg = {a5_col: a5_hexes, "a5_res": resolution}
+        a5_col = A5_COL
+        assign_arg = {a5_col: a5_hexes, f"{a5_col}_res": resolution}    # a5_res is the resolution of the A5 cells
         df = self._df.assign(**assign_arg)
         if set_index:
             return df.set_index(a5_col)
         return df
 
     def a52geo(
-        self, a5_col: str = None, fix_antimeridian: bool = False
+        self, a5_col: str = None, split_antimeridian: bool = False
     ) -> GeoDataFrame:
-        """Add geometry with A5 geometry to the DataFrame."""
+        """Add geometry with A5 geometry to the DataFrame.
+
+        Parameters
+        ----------
+        split_antimeridian : bool, optional
+            Split antimeridian-crossing cells. Default: False
+        """
         if a5_col is not None:
             if a5_col not in self._df.columns:
                 raise ValueError(f"Column '{a5_col}' not found in DataFrame")
             ids = self._df[a5_col]
         else:
-            if "a5" not in self._df.columns:
-                raise ValueError("Column 'a5' not found in DataFrame")
-            ids = self._df["a5"]
+            if A5_COL not in self._df.columns:
+                raise ValueError(f"Column '{A5_COL}' not found in DataFrame")
+            ids = self._df[A5_COL]
         return dggs_ids_to_geodataframe(
             self._df,
             ids,
             a5_to_geo,
-            to_geo_kwargs={"split_antimeridian": fix_antimeridian},
+            to_geo_kwargs={"split_antimeridian": split_antimeridian},
         )
 
     def polyfill(
@@ -260,7 +266,7 @@ class A5Pandas:
         predicate: str = None,
         compact: bool = False,
         explode: bool = False,
-        fix_antimeridian: bool = False,
+        split_antimeridian: bool = False,
     ) -> AnyDataFrame:
         """
         Parameters
@@ -275,18 +281,21 @@ class A5Pandas:
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
             Default: False
+        split_antimeridian : bool, optional
+            Split antimeridian-crossing cells when converting to geometry.
+            Default: False
         """
 
         result = self._df.geometry.apply(
             lambda geom: polyfill_row(
-                geom, resolution, predicate, compact, fix_antimeridian
+                geom, resolution, predicate, compact, split_antimeridian
             )
         )
 
         if not explode:
-            return self._df.assign(**{COLUMN_A5_POLYFILL: result})
+            return self._df.assign(**{A5_COL: result})
 
-        result = result.explode().to_frame(COLUMN_A5_POLYFILL)
+        result = result.explode().to_frame(A5_COL)
         return self._df.join(result)
 
     def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
@@ -305,8 +314,8 @@ class A5Pandas:
             lambda row: list(linetrace(row.geometry, resolution)), axis=1
         )
         if not explode:
-            return self._df.assign(**{COLUMN_A5_POLYFILL: result})
-        result = result.explode().to_frame(COLUMN_A5_POLYFILL)
+            return self._df.assign(**{A5_COL: result})
+        result = result.explode().to_frame(A5_COL)
         return self._df.join(result)
 
     def a5bin(
@@ -317,12 +326,12 @@ class A5Pandas:
         category_col: str = None,
         lat_col: str = "lat",
         lon_col: str = "lon",
-        fix_antimeridian: bool = False,
+        split_antimeridian: bool = False,
     ) -> GeoDataFrame:
         """
         Bin points into a5 cells and compute statistics.
         """
-        a5_col = "a5"
+        a5_col = A5_COL
         df = self.latlon2a5(resolution, lat_col, lon_col)
         result = aggregate_bin(df, a5_col, stats, numeric_col, category_col)
-        return result.a5.a52geo(a5_col=a5_col, fix_antimeridian=fix_antimeridian)
+        return result.a5.a52geo(a5_col=a5_col, split_antimeridian=split_antimeridian)

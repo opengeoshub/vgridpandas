@@ -1,7 +1,7 @@
 # VgridPandas
 **VgridPandas - Integrates [Vgrid DGGS](https://github.com/opengeoshub/vgrid) with [GeoPandas](https://github.com/geopandas/geopandas) and [Pandas](https://github.com/pandas-dev/pandas), inspired by [H3-Pandas](https://github.com/DahnJ/H3-Pandas/) by [Daniel Jahn](https://github.com/DahnJ)**.
 
-VgridPandas supports a wide range of popular geodesic DGGS including H3, S2, A5, rHEALPix, Open-EAGGR ISEA4T, EASE-DGGS, DGGAL, DGGRID, QTM, as well as graticule-based DGGS such as OLC, Geohash, MGRS, GEOREF, TileCode, Quadkey, Maidenhead, and GARS.
+VgridPandas supports a wide range of popular geodesic DGGS, including H3, S2, A5, rHEALPix, DGGAL, DGGRID, Open-EAGGR ISEA4T, ISEA3H, EASE-DGGS, and QTM, along with graticule-based DGGS such as OLC, Geohash, GEOREF, MGRS, TileCode, Quadkey, Maidenhead, and GARS.
 
 [![logo](https://raw.githubusercontent.com/opengeoshub/vgridtools/refs/heads/main/images/vgridpandas.svg)](https://github.com/opengeoshub/vgridtools/blob/main/images/vgridpandas.svg)
 
@@ -39,6 +39,8 @@ pip install vgridpandas --upgrade
 - **DGGS to geo boundary:** Convert DGGS cell IDs into their corresponding geographic boundaries.
 - **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
 - **DGGS binning:** Aggregate points into DGGS cells, supporting common statistics (count, min, max, etc.) and category-based groups.
+
+- **DGGS resample:** Cross-grid resampling (e.g. H3 to S2) is available in the companion [vgrid](https://pypi.org/project/vgrid/) package via `dggsresample`.
 
 ## Usage examples
 
@@ -106,6 +108,14 @@ df_bin.plot(
 ```
 <div align="center">
   <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/a5bin.png">
+</div>
+
+### DGGS Resample
+
+Cross-grid resampling (e.g. H3 to S2) is available in [vgrid](https://pypi.org/project/vgrid/) via `dggsresample`. See the [vgrid documentation](https://vgrid.gishub.vn) for CLI and Python API details.
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/opengeoshub/vgridtools/main/images/readme/dggsresampling_h32s2.png">
 </div>
 
 ### Further examples

@@ -18,7 +18,7 @@ from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgrid.conversion.latlon2dggs import latlon2s2 as latlon_to_s2
 from vgrid.conversion.dggs2geo.s22geo import s22geo as s2_to_geo
-from vgridpandas.utils.const import COLUMN_S2_POLYFILL
+from vgridpandas.utils.const import S2_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -133,8 +133,8 @@ class S2Pandas:
 
         s2_tokens = [latlon_to_s2(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
-        s2_col = "s2"
-        df = self._df.assign(**{s2_col: s2_tokens, "s2_res": resolution})
+        s2_col = S2_COL
+        df = self._df.assign(**{s2_col: s2_tokens, f"{s2_col}_res": resolution})
         if set_index:
             return df.set_index(s2_col)
         return df
@@ -148,9 +148,9 @@ class S2Pandas:
                 raise ValueError(f"Column '{s2_col}' not found in DataFrame")
             ids = self._df[s2_col]
         else:
-            if "s2" not in self._df.columns:
-                raise ValueError("Column 's2' not found in DataFrame")
-            ids = self._df["s2"]
+            if S2_COL not in self._df.columns:
+                raise ValueError(f"Column '{S2_COL}' not found in DataFrame")
+            ids = self._df[S2_COL]
         return dggs_ids_to_geodataframe(
             self._df, ids, s2_to_geo, fix_antimeridian=fix_antimeridian
         )
@@ -190,9 +190,9 @@ class S2Pandas:
         )
 
         if not explode:
-            return self._df.assign(**{COLUMN_S2_POLYFILL: result})
+            return self._df.assign(**{S2_COL: result})
 
-        result = result.explode().to_frame(COLUMN_S2_POLYFILL)
+        result = result.explode().to_frame(S2_COL)
 
         return self._df.join(result)
 
@@ -207,7 +207,7 @@ class S2Pandas:
         fix_antimeridian: Optional[str] = None,
     ) -> GeoDataFrame:
         """Bin points into S2 cells and compute statistics."""
-        s2_col = "s2"
+        s2_col = S2_COL
         df = self.latlon2s2(resolution, lat_col, lon_col)
         result = aggregate_bin(df, s2_col, stats, numeric_col, category_col)
         return result.s2.s22geo(s2_col=s2_col, fix_antimeridian=fix_antimeridian)
