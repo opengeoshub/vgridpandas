@@ -5,6 +5,7 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
+from vgridpandas.utils.const import GEOREF_COL
 from vgrid.conversion.latlon2dggs import latlon2georef as latlon_to_georef
 from vgrid.conversion.dggs2geo.georef2geo import georef2geo as georef_to_geo
 
@@ -60,11 +61,11 @@ class GEOREFPandas:
         ]
 
         # georef_column = self._format_resolution(resolution)
-        georef_column = "georef"
-        assign_arg = {georef_column: georef_ids, "georef_res": resolution}
+        georef_col = GEOREF_COL
+        assign_arg = {georef_col: georef_ids, f"{georef_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(georef_column)
+            return df.set_index(georef_col)
         return df
 
     def georef2geo(self, georef_col: str = None) -> GeoDataFrame:
@@ -74,9 +75,9 @@ class GEOREFPandas:
                 raise ValueError(f"Column '{georef_col}' not found in DataFrame")
             ids = self._df[georef_col]
         else:
-            if "georef" not in self._df.columns:
-                raise ValueError("Column 'georef' not found in DataFrame")
-            ids = self._df["georef"]
+            if GEOREF_COL not in self._df.columns:
+                raise ValueError(f"Column '{GEOREF_COL}' not found in DataFrame")
+            ids = self._df[GEOREF_COL]
         return dggs_ids_to_geodataframe(self._df, ids, georef_to_geo)
 
     def georefbin(
@@ -91,7 +92,7 @@ class GEOREFPandas:
         """
         Bin points into georef cells and compute statistics.
         """
-        georef_col = "georef"
+        georef_col = GEOREF_COL
         df = self.latlon2georef(resolution, lat_col, lon_col)
         result = aggregate_bin(df, georef_col, stats, numeric_col, category_col)
         return result.georef.georef2geo(georef_col=georef_col)

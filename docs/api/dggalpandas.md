@@ -1,0 +1,3 @@
+# DGGALPandas module
+
+::: vgridpandas.dggalpandas

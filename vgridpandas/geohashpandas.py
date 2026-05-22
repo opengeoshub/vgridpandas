@@ -13,7 +13,7 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
-from vgridpandas.utils.const import COLUMN_GEOHASH_POLYFILL
+from vgridpandas.utils.const import GEOHASH_COL
 
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -144,12 +144,11 @@ class GeohashPandas:
             latlon_to_geohash(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # geohash_column = self._format_resolution(resolution)
-        geohash_column = "geohash"
-        assign_arg = {geohash_column: geohash_ids, "geohash_res": resolution}
+        geohash_col = GEOHASH_COL
+        assign_arg = {geohash_col: geohash_ids, f"{geohash_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(geohash_column)
+            return df.set_index(geohash_col)
         return df
 
     def geohash2geo(self, geohash_col: str = None) -> GeoDataFrame:
@@ -159,9 +158,9 @@ class GeohashPandas:
                 raise ValueError(f"Column '{geohash_col}' not found in DataFrame")
             ids = self._df[geohash_col]
         else:
-            if "geohash" not in self._df.columns:
-                raise ValueError("Column 'geohash' not found in DataFrame")
-            ids = self._df["geohash"]
+            if GEOHASH_COL not in self._df.columns:
+                raise ValueError(f"Column '{GEOHASH_COL}' not found in DataFrame")
+            ids = self._df[GEOHASH_COL]
         return dggs_ids_to_geodataframe(self._df, ids, geohash_to_geo)
 
     def polyfill(
@@ -191,10 +190,10 @@ class GeohashPandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_GEOHASH_POLYFILL: result}
+            assign_args = {GEOHASH_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_GEOHASH_POLYFILL)
+        result = result.explode().to_frame(GEOHASH_COL)
         return self._df.join(result)
 
     def geohashbin(
@@ -209,10 +208,7 @@ class GeohashPandas:
         """
         Bin points into geohash cells and compute statistics.
         """
-        geohash_col = "geohash"
+        geohash_col = GEOHASH_COL
         df = self.latlon2geohash(resolution, lat_col, lon_col)
         result = aggregate_bin(df, geohash_col, stats, numeric_col, category_col)
         return result.geohash.geohash2geo(geohash_col=geohash_col)
-
-    def _format_resolution(resolution: int) -> str:
-        return f"geohash_{str(resolution).zfill(2)}"

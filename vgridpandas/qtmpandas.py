@@ -15,7 +15,7 @@ from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
-from vgridpandas.utils.const import COLUMN_QTM_POLYFILL
+from vgridpandas.utils.const import QTM_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -193,12 +193,11 @@ class QTMPandas:
 
         qtm_ids = [latlon_to_qtm(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
-        # qtm_column = self._format_resolution(resolution)
-        qtm_column = "qtm"
-        assign_arg = {qtm_column: qtm_ids, "qtm_res": resolution}
+        qtm_col = QTM_COL
+        assign_arg = {qtm_col: qtm_ids, f"{qtm_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(qtm_column)
+            return df.set_index(qtm_col)
         return df
 
     def qtm2geo(self, qtm_col: str = None) -> GeoDataFrame:
@@ -208,9 +207,9 @@ class QTMPandas:
                 raise ValueError(f"Column '{qtm_col}' not found in DataFrame")
             ids = self._df[qtm_col]
         else:
-            if "qtm" not in self._df.columns:
-                raise ValueError("Column 'qtm' not found in DataFrame")
-            ids = self._df["qtm"]
+            if QTM_COL not in self._df.columns:
+                raise ValueError(f"Column '{QTM_COL}' not found in DataFrame")
+            ids = self._df[QTM_COL]
         return dggs_ids_to_geodataframe(self._df, ids, qtm_to_geo)
 
     def polyfill(
@@ -240,10 +239,10 @@ class QTMPandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_QTM_POLYFILL: result}
+            assign_args = {QTM_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_QTM_POLYFILL)
+        result = result.explode().to_frame(QTM_COL)
         return self._df.join(result)
 
     def qtmbin(
@@ -258,10 +257,7 @@ class QTMPandas:
         """
         Bin points into qtm cells and compute statistics.
         """
-        qtm_col = "qtm"
+        qtm_col = QTM_COL
         df = self.latlon2qtm(resolution, lat_col, lon_col)
         result = aggregate_bin(df, qtm_col, stats, numeric_col, category_col)
         return result.qtm.qtm2geo(qtm_col=qtm_col)
-
-    def _format_resolution(resolution: int) -> str:
-        return f"qtm_{str(resolution).zfill(2)}"

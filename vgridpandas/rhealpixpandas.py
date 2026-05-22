@@ -18,7 +18,7 @@ from vgrid.conversion.dggs2geo.rhealpix2geo import rhealpix2geo as rhealpix_to_g
 from vgrid.conversion.dggscompact.rhealpixcompact import rhealpix_compact
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_rhealpix_resolution
-from vgridpandas.utils.const import COLUMN_RHEALPIX_POLYFILL
+from vgridpandas.utils.const import RHEALPIX_COL
 from vgrid.dggs.rhealpixdggs.dggs import RHEALPixDGGS
 from vgrid.dggs.rhealpixdggs.ellipsoids import WGS84_ELLIPSOID
 
@@ -176,8 +176,8 @@ class rHEALPixPandas:
             latlon_to_rhealpix(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        rhealpix_column = "rhealpix"
-        assign_arg = {rhealpix_column: rhealpix_ids, "rhealpix_res": resolution}
+        rhealpix_column = RHEALPIX_COL
+        assign_arg = {rhealpix_column: rhealpix_ids, f"{rhealpix_column}_res": resolution}
 
         df = self._df.assign(**assign_arg)
         if set_index:
@@ -193,9 +193,9 @@ class rHEALPixPandas:
                 raise ValueError(f"Column '{rhealpix_col}' not found in DataFrame")
             ids = self._df[rhealpix_col]
         else:
-            if "rhealpix" not in self._df.columns:
-                raise ValueError("Column 'rhealpix' not found in DataFrame")
-            ids = self._df["rhealpix"]
+            if RHEALPIX_COL not in self._df.columns:
+                raise ValueError(f"Column '{RHEALPIX_COL}' not found in DataFrame")
+            ids = self._df[RHEALPIX_COL]
         return dggs_ids_to_geodataframe(
             self._df, ids, rhealpix_to_geo, fix_antimeridian=fix_antimeridian
         )
@@ -232,10 +232,10 @@ class rHEALPixPandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_RHEALPIX_POLYFILL: result}
+            assign_args = {RHEALPIX_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_RHEALPIX_POLYFILL)
+        result = result.explode().to_frame(RHEALPIX_COL)
         return self._df.join(result)
 
     def rhealpixbin(
@@ -251,7 +251,7 @@ class rHEALPixPandas:
         """
         Bin points into rhealpix cells and compute statistics.
         """
-        rhealpix_col = "rhealpix"
+        rhealpix_col = RHEALPIX_COL
         df = self.latlon2rhealpix(resolution, lat_col, lon_col)
         result = aggregate_bin(df, rhealpix_col, stats, numeric_col, category_col)
         return result.rhealpix.rhealpix2geo(

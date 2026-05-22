@@ -15,7 +15,7 @@ from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
 from vgrid.conversion.dggs2geo.quadkey2geo import quadkey2geo as quadkey_to_geo
-from vgridpandas.utils.const import COLUMN_QUADKEY_POLYFILL
+from vgridpandas.utils.const import QUADKEY_COL 
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -152,12 +152,11 @@ class QuadkeyPandas:
             latlon_to_quadkey(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # tilecode_column = self._format_resolution(resolution)
-        tilecode_column = "quadkey"
-        assign_arg = {tilecode_column: quadkey_ids, "quadkey_res": resolution}
+        quadkey_col = QUADKEY_COL
+        assign_arg = {quadkey_col: quadkey_ids, f"{quadkey_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(tilecode_column)
+            return df.set_index(quadkey_col)
         return df
 
     def quadkey2geo(self, quadkey_col: str = None) -> GeoDataFrame:
@@ -167,9 +166,9 @@ class QuadkeyPandas:
                 raise ValueError(f"Column '{quadkey_col}' not found in DataFrame")
             ids = self._df[quadkey_col]
         else:
-            if "quadkey" not in self._df.columns:
-                raise ValueError("Column 'quadkey' not found in DataFrame")
-            ids = self._df["quadkey"]
+            if QUADKEY_COL not in self._df.columns:
+                raise ValueError(f"Column '{QUADKEY_COL}' not found in DataFrame")
+            ids = self._df[QUADKEY_COL]
         return dggs_ids_to_geodataframe(self._df, ids, quadkey_to_geo)
 
     def polyfill(
@@ -199,10 +198,10 @@ class QuadkeyPandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_QUADKEY_POLYFILL: result}
+            assign_args = {QUADKEY_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_QUADKEY_POLYFILL)
+        result = result.explode().to_frame(QUADKEY_COL)
         return self._df.join(result)
 
     def quadkeybin(
@@ -217,10 +216,7 @@ class QuadkeyPandas:
         """
         Bin points into quadkey cells and compute statistics.
         """
-        quadkey_col = "quadkey"
+        quadkey_col = QUADKEY_COL
         df = self.latlon2quadkey(resolution, lat_col, lon_col)
         result = aggregate_bin(df, quadkey_col, stats, numeric_col, category_col)
         return result.quadkey.quadkey2geo(quadkey_col=quadkey_col)
-
-    def _format_resolution(resolution: int) -> str:
-        return f"quadkey_{str(resolution).zfill(2)}"

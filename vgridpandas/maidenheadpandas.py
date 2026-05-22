@@ -7,7 +7,7 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
-
+from vgridpandas.utils.const import MAIDENHEAD_COL
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
@@ -64,11 +64,11 @@ class MaidenheadPandas:
         ]
 
         # maidenhead_column = self._format_resolution(resolution)
-        maidenhead_column = "maidenhead"
-        assign_arg = {maidenhead_column: maidenhead_ids, "maidenhead_res": resolution}
+        maidenhead_col = MAIDENHEAD_COL
+        assign_arg = {maidenhead_col: maidenhead_ids, f"{maidenhead_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(maidenhead_column)
+            return df.set_index(maidenhead_col)
         return df
 
     def maidenhead2geo(self, maidenhead_col: str = None) -> GeoDataFrame:
@@ -78,9 +78,9 @@ class MaidenheadPandas:
                 raise ValueError(f"Column '{maidenhead_col}' not found in DataFrame")
             ids = self._df[maidenhead_col]
         else:
-            if "maidenhead" not in self._df.columns:
-                raise ValueError("Column 'maidenhead' not found in DataFrame")
-            ids = self._df["maidenhead"]
+            if MAIDENHEAD_COL not in self._df.columns:
+                raise ValueError(f"Column '{MAIDENHEAD_COL}' not found in DataFrame")
+            ids = self._df[MAIDENHEAD_COL]
         return dggs_ids_to_geodataframe(self._df, ids, maidenhead_to_geo)
 
     def maidenheadbin(
@@ -95,7 +95,7 @@ class MaidenheadPandas:
         """
         Bin points into maidenhead cells and compute statistics.
         """
-        maidenhead_col = "maidenhead"
+        maidenhead_col = MAIDENHEAD_COL
         df = self.latlon2maidenhead(resolution, lat_col, lon_col)
         result = aggregate_bin(df, maidenhead_col, stats, numeric_col, category_col)
         return result.maidenhead.maidenhead2geo(maidenhead_col=maidenhead_col)

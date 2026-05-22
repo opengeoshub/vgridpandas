@@ -17,7 +17,7 @@ from vgridpandas.utils.decorator import (
 )
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_h3_resolution
-from vgridpandas.utils.const import COLUMN_H3_POLYFILL, COLUMN_H3_LINETRACE
+from vgridpandas.utils.const import H3_COL
 from vgrid.conversion.latlon2dggs import latlon2h3 as latlon_to_h3
 from vgrid.conversion.dggs2geo.h32geo import h32geo as h3_to_geo
 
@@ -202,8 +202,8 @@ class H3Pandas:
 
         h3_ids = [latlon_to_h3(lat, lon, resolution) for lat, lon in zip(lats, lons)]
 
-        h3_col = "h3"
-        assign_arg = {h3_col: h3_ids, "h3_res": resolution}
+        h3_col = H3_COL
+        assign_arg = {h3_col: h3_ids, f"{h3_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
             return df.set_index(h3_col)
@@ -218,13 +218,13 @@ class H3Pandas:
                 raise ValueError(f"Column '{h3_col}' not found in DataFrame")
             ids = self._df[h3_col]
         else:
-            if "h3" not in self._df.columns:
-                raise ValueError("Column 'h3' not found in DataFrame")
-            ids = self._df["h3"]
+            if H3_COL not in self._df.columns:
+                raise ValueError(f"Column '{H3_COL}' not found in DataFrame")
+            ids = self._df[H3_COL]
         return dggs_ids_to_geodataframe(
             self._df, ids, h3_to_geo, fix_antimeridian=fix_antimeridian
         )
-
+    
     def h3bin(
         self,
         resolution: int,
@@ -238,7 +238,7 @@ class H3Pandas:
         """
         Bin points into h3 cells and compute statistics.
         """
-        h3_col = "h3"
+        h3_col = H3_COL
         df = self.latlon2h3(resolution, lat_col, lon_col)
         result = aggregate_bin(df, h3_col, stats, numeric_col, category_col)
         return result.h3.h32geo(h3_col=h3_col, fix_antimeridian=fix_antimeridian)
@@ -275,9 +275,9 @@ class H3Pandas:
         )
 
         if not explode:
-            return self._df.assign(**{COLUMN_H3_POLYFILL: result})
+            return self._df.assign(**{H3_COL: result})
 
-        result = result.explode().to_frame(COLUMN_H3_POLYFILL)
+        result = result.explode().to_frame(H3_COL)
         return self._df.join(result)
 
     def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
@@ -320,10 +320,10 @@ class H3Pandas:
 
         result = df.apply(func, axis=1)
         if not explode:
-            assign_args = {COLUMN_H3_LINETRACE: result}
+            assign_args = {H3_COL: result}
             return df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_H3_LINETRACE)
+        result = result.explode().to_frame(H3_COL)
         return df.join(result)
 
     def _apply_index_assign(

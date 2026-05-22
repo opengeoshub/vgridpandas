@@ -14,7 +14,7 @@ from vgridpandas.utils.bin_helpers import aggregate_bin
 
 from vgrid.conversion.latlon2dggs import latlon2tilecode as latlon_to_tilecode
 from vgrid.conversion.dggs2geo.tilecode2geo import tilecode2geo as tilecode_to_geo
-from vgridpandas.utils.const import COLUMN_TILECODE_POLYFILL
+from vgridpandas.utils.const import TILECODE_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
@@ -160,12 +160,11 @@ class TilecodePandas:
             latlon_to_tilecode(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # tilecode_column = self._format_resolution(resolution)
-        tilecode_column = "tilecode"
-        assign_arg = {tilecode_column: tilecode_ids, "tilecode_res": resolution}
+        tilecode_col = TILECODE_COL 
+        assign_arg = {tilecode_col: tilecode_ids, f"{tilecode_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(tilecode_column)
+            return df.set_index(tilecode_col)
         return df
 
     def tilecode2geo(self, tilecode_col: str = None) -> GeoDataFrame:
@@ -175,9 +174,9 @@ class TilecodePandas:
                 raise ValueError(f"Column '{tilecode_col}' not found in DataFrame")
             ids = self._df[tilecode_col]
         else:
-            if "tilecode" not in self._df.columns:
-                raise ValueError("Column 'tilecode' not found in DataFrame")
-            ids = self._df["tilecode"]
+            if TILECODE_COL not in self._df.columns:
+                raise ValueError(f"Column '{TILECODE_COL}' not found in DataFrame")
+            ids = self._df[TILECODE_COL]
         return dggs_ids_to_geodataframe(self._df, ids, tilecode_to_geo)
 
     def polyfill(
@@ -207,10 +206,10 @@ class TilecodePandas:
         )
 
         if not explode:
-            assign_args = {COLUMN_TILECODE_POLYFILL: result}
+            assign_args = {TILECODE_COL: result}
             return self._df.assign(**assign_args)
 
-        result = result.explode().to_frame(COLUMN_TILECODE_POLYFILL)
+        result = result.explode().to_frame(TILECODE_COL)
         return self._df.join(result)
 
     def tilecodebin(
@@ -225,10 +224,7 @@ class TilecodePandas:
         """
         Bin points into tilecode cells and compute statistics.
         """
-        tilecode_col = "tilecode"
+        tilecode_col = TILECODE_COL
         df = self.latlon2tilecode(resolution, lat_col, lon_col)
         result = aggregate_bin(df, tilecode_col, stats, numeric_col, category_col)
         return result.tilecode.tilecode2geo(tilecode_col=tilecode_col)
-
-    def _format_resolution(resolution: int) -> str:
-        return f"tilecode_{str(resolution).zfill(2)}"
