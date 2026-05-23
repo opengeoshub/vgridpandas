@@ -1,4 +1,5 @@
-from typing import Union
+from typing import Union, List
+
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -7,28 +8,26 @@ from shapely.geometry import (
 )
 import pandas as pd
 import geopandas as gpd
+from pandas.core.frame import DataFrame
+from geopandas.geodataframe import GeoDataFrame
 
 from vgrid.conversion.latlon2dggs import latlon2qtm as latlon_to_qtm
 from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
-from pandas.core.frame import DataFrame
-from geopandas.geodataframe import GeoDataFrame
+from vgrid.conversion.dggscompact.qtmcompact import qtm_compact
+from vgrid.dggs.qtm import constructGeometry, divideFacet
+from vgrid.utils.io import validate_qtm_resolution
+from vgrid.utils.geometry import check_predicate
+
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
-
 from vgridpandas.utils.const import QTM_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
-
-from typing import Union, Set
-from vgrid.dggs.qtm import constructGeometry, divideFacet
-from vgrid.utils.io import validate_qtm_resolution
-from vgrid.utils.geometry import check_predicate
-from vgrid.conversion.dggscompact.qtmcompact import qtm_compact
-
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 
+# Initial octahedral facets (same definitions as vgrid.conversion.vector2dggs.vector2qtm)
 p90_n180, p90_n90, p90_p0, p90_p90, p90_p180 = (
     (90.0, -180.0),
     (90.0, -90.0),
@@ -51,8 +50,7 @@ n90_n180, n90_n90, n90_p0, n90_p90, n90_p180 = (
     (-90.0, 180.0),
 )
 
-
-initial_facets = [
+INITIAL_FACETS = [
     [p0_n180, p0_n90, p90_n90, p90_n180, p0_n180, True],
     [p0_n90, p0_p0, p90_p0, p90_n90, p0_n90, True],
     [p0_p0, p0_p90, p90_p90, p90_p0, p0_p0, True],
@@ -65,30 +63,17 @@ initial_facets = [
 
 
 def poly2qtm(
-    geometry: MultiPolyOrPoly,
+    geometry: Union[MultiPolyOrPoly, MultiLineOrLine],
     resolution: int,
     predicate: str = None,
     compact: bool = False,
-) -> Set[str]:
+) -> List[str]:
     """
-    Convert polygon geometries (Polygon, MultiPolygon) to QTM cells.
+    Convert polygon or line geometries to QTM cells.
 
-    Args:
-        resolution (int): QTM resolution level [1..24]
-        geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
-        predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
-
-    Returns:
-        list: List of qtm ids intersecting the polygon
-
-    Example:
-        >>> from shapely.geometry import Polygon
-        >>> poly = Polygon([(-122.5, 37.7), (-122.3, 37.7), (-122.3, 37.9), (-122.5, 37.9)])
-        >>> cells = poly2qtm(poly, 10, predicate="intersect", compact=True)
-        >>> len(cells) > 0
-        True
+    Mirrors ``polygon2qtm`` / ``polyline2qtm`` in vgrid: walk the facet tree at the
+    target resolution, then optionally compact the id set (same as ``vector2qtm``).
     """
-
     resolution = validate_qtm_resolution(resolution)
     qtm_ids = []
     if isinstance(geometry, (Polygon, LineString)):
@@ -98,37 +83,39 @@ def poly2qtm(
     else:
         return []
 
+    is_line = isinstance(geometry, (LineString, MultiLineString))
     for poly in polys:
         level_facets = {}
-        QTMID = {}
+        qtm_id_by_level = {}
         for lvl in range(resolution):
             level_facets[lvl] = []
-            QTMID[lvl] = []
+            qtm_id_by_level[lvl] = []
             if lvl == 0:
-                for i, facet in enumerate(initial_facets):
-                    QTMID[0].append(str(i + 1))
+                for i, facet in enumerate(INITIAL_FACETS):
+                    qtm_id_by_level[0].append(str(i + 1))
                     level_facets[0].append(facet)
                     facet_geom = constructGeometry(facet)
                     if Polygon(facet_geom).intersects(poly) and resolution == 1:
-                        qtm_id = QTMID[0][i]
-                        qtm_ids.append(qtm_id)
-                        return qtm_ids
+                        qtm_ids.append(qtm_id_by_level[0][i])
+                        break
+                if resolution == 1:
+                    continue
             else:
-                for i, pf in enumerate(level_facets[lvl - 1]):
-                    subdivided_facets = divideFacet(pf)
-                    for j, subfacet in enumerate(subdivided_facets):
+                for i, parent_facet in enumerate(level_facets[lvl - 1]):
+                    for j, subfacet in enumerate(divideFacet(parent_facet)):
                         subfacet_geom = constructGeometry(subfacet)
-                        if Polygon(subfacet_geom).intersects(poly):
-                            new_id = QTMID[lvl - 1][i] + str(j)
-                            QTMID[lvl].append(new_id)
-                            level_facets[lvl].append(subfacet)
-                            if lvl == resolution - 1:
-                                if not check_predicate(
-                                    Polygon(subfacet_geom), poly, predicate
-                                ):
-                                    continue
+                        if not Polygon(subfacet_geom).intersects(poly):
+                            continue
+                        new_id = qtm_id_by_level[lvl - 1][i] + str(j)
+                        qtm_id_by_level[lvl].append(new_id)
+                        level_facets[lvl].append(subfacet)
+                        if lvl == resolution - 1:
+                            if is_line or check_predicate(
+                                Polygon(subfacet_geom), poly, predicate
+                            ):
                                 qtm_ids.append(new_id)
-    if compact:
+
+    if compact and qtm_ids:
         return qtm_compact(qtm_ids)
     return qtm_ids
 
@@ -151,9 +138,6 @@ class QTMPandas:
     def __init__(self, df: DataFrame):
         self._df = df
 
-    # QTM API
-    # These methods simply mirror the Vgrid qtm API and apply QTM functions to all rows
-
     def latlon2qtm(
         self,
         resolution: int,
@@ -167,23 +151,7 @@ class QTMPandas:
         gpd.GeoDataFrame: uses `geometry`
 
         Assumes coordinates in epsg=4326.
-
-        Parameters
-        ----------
-        resolution : int
-            QTM resolution
-        lat_col : str
-            Name of the latitude column (if used), default 'lat'
-        lon_col : str
-            Name of the longitude column (if used), default 'lon'
-        set_index : bool
-            If True, the columns with QTM ID is set as index, default 'True'
-
-        Returns
-        -------
-        (Geo)DataFrame with QTM IDs added
         """
-
         if isinstance(self._df, gpd.GeoDataFrame):
             lons = self._df.geometry.x
             lats = self._df.geometry.y
@@ -220,20 +188,12 @@ class QTMPandas:
         explode: bool = False,
     ) -> AnyDataFrame:
         """
-        Parameters
-        ----------
-        resolution : int
-            QTM resolution
-        predicate : str, optional
-            Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
-        compact : bool, optional
-            Whether to compact the QTM IDs
-        explode : bool
-            If True, will explode the resulting list vertically.
-            All other columns' values are copied.
-            Default: False
-        """
+        Fill geometries with QTM cell ids at the target resolution.
 
+        When ``compact=True``, ids may span multiple resolutions after compaction
+        (same as ``vector2qtm``). Use ``explode=True`` before ``qtm2geo`` for one
+        cell geometry per row.
+        """
         result = self._df.geometry.apply(
             lambda geom: polyfill_row(geom, resolution, predicate, compact)
         )
@@ -254,9 +214,7 @@ class QTMPandas:
         lat_col: str = "lat",
         lon_col: str = "lon",
     ) -> GeoDataFrame:
-        """
-        Bin points into qtm cells and compute statistics.
-        """
+        """Bin points into qtm cells and compute statistics."""
         qtm_col = QTM_COL
         df = self.latlon2qtm(resolution, lat_col, lon_col)
         result = aggregate_bin(df, qtm_col, stats, numeric_col, category_col)

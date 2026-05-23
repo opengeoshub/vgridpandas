@@ -24,21 +24,6 @@ from ease_dggs.dggs.grid_addressing import geo_polygon_to_grid_ids
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
 
 
-def _ease_bbox_cell_ids(bounds, resolution):
-    """Return EASE cell ids covering a geometry bounding box."""
-    poly_bbox = box(*bounds)
-    cells_bbox = geo_polygon_to_grid_ids(
-        poly_bbox.wkt,
-        resolution,
-        geo_crs,
-        ease_crs,
-        levels_specs,
-        return_centroids=True,
-        wkt_geom=True,
-    )
-    return cells_bbox["result"]["data"]
-
-
 def poly2ease(
     geometry,
     resolution: int,
@@ -49,9 +34,9 @@ def poly2ease(
     Convert polygon or line geometries to EASE grid cells.
 
     Mirrors ``polygon2ease`` and ``polyline2ease`` in vgrid: bbox discovery via
-    ``geo_polygon_to_grid_ids``, then filter with ``ease2geo``. Polygons use
-    ``predicate``; lines use intersection. Compact mode applies to polygons
-    after predicate filtering only (not lines).
+    ``geo_polygon_to_grid_ids``, then filter with ``ease2geo`` cell polygons.
+    Polygons use ``predicate``; lines use intersection.
+    Compact mode applies to polygons after predicate filtering only (not lines).
 
     Args:
         resolution (int): EASE resolution level [0..6]
@@ -79,19 +64,34 @@ def poly2ease(
     else:
         return []
 
+    is_line = isinstance(geometry, (LineString, MultiLineString))
     for poly in polys:
         if poly is None or poly.is_empty:
             continue
 
-        is_line = isinstance(poly, LineString)
-        bbox_cells = _ease_bbox_cell_ids(poly.bounds, resolution)
+        poly_bbox = box(*poly.bounds)
+        cells_bbox = geo_polygon_to_grid_ids(
+            poly_bbox.wkt,
+            resolution,
+            geo_crs,
+            ease_crs,
+            levels_specs,
+            return_centroids=True,
+            wkt_geom=True,
+        )
+        candidate_ids = cells_bbox["result"]["data"]
+        if not candidate_ids:
+            continue
+
+        if compact and is_line:
+            candidate_ids = ease_compact(candidate_ids)
 
         poly_ids = []
-        for ease_id in bbox_cells:
-            cell_polygon = ease_to_geo(ease_id)
+        for ease_id in candidate_ids:
+            ease_id_str = str(ease_id)
+            cell_polygon = ease_to_geo(ease_id_str)
             if not cell_polygon:
                 continue
-            ease_id_str = str(ease_id)
             if is_line:
                 if cell_polygon.intersects(poly):
                     poly_ids.append(ease_id_str)
@@ -99,7 +99,7 @@ def poly2ease(
                 poly_ids.append(ease_id_str)
 
         if compact and poly_ids and not is_line:
-            poly_ids = list(ease_compact(poly_ids))
+            poly_ids = [str(cell_id) for cell_id in ease_compact(poly_ids)]
 
         ease_ids.extend(poly_ids)
 
