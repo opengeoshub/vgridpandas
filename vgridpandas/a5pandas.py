@@ -18,7 +18,6 @@ from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
-from vgridpandas.utils.decorator import sequential_deduplication
 from vgrid.conversion.latlon2dggs import latlon2a5 as latlon_to_a5
 from vgrid.conversion.dggs2geo.a52geo import a52geo as a5_to_geo, a52geo_u64
 from vgrid.conversion.dggscompact.a5compact import a5compact
@@ -141,13 +140,11 @@ def poly2a5(
     return a5_hexes
 
 
-@sequential_deduplication
 def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
     """Trace a (Multi)LineString with A5 cells along great-circle arcs between vertices.
 
     Uses ``a5.line_string_to_cells`` (same approach as ``polyline2a5`` in vgrid).
-    Does not emit duplicate sequential cells; cells may repeat non-sequentially
-    at self-intersections.
+    Cells may repeat at self-intersections or shared vertices.
     """
     resolution = validate_a5_resolution(resolution)
     if isinstance(geometry, MultiLineString):

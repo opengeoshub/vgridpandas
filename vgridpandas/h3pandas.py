@@ -1,4 +1,4 @@
-from typing import Union, Callable, Any, Optional, Iterator
+from typing import Union, Optional, Iterator
 
 
 import pandas as pd
@@ -11,10 +11,6 @@ from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
-from vgridpandas.utils.decorator import (
-    catch_invalid_dggs_id,
-    sequential_deduplication,
-)
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_h3_resolution
 from vgridpandas.utils.const import H3_COL
@@ -71,12 +67,10 @@ def poly2h3(geometry, resolution, predicate=None, compact=False, fix_antimeridia
     return h3_ids
 
 
-@sequential_deduplication
 def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
-    """h3.polyfill equivalent for shapely (Multi)LineString
-    Does not represent lines with duplicate sequential cells,
-    but cells may repeat non-sequentially to represent
-    self-intersections
+    """h3.polyfill equivalent for shapely (Multi)LineString.
+
+    Cells may repeat at self-intersections or shared vertices.
 
     Parameters
     ----------
@@ -117,15 +111,7 @@ def polyfill_row(
             poly2h3(geometry, resolution, predicate, compact, fix_antimeridian)
         )
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2h3(
-                geometry,
-                resolution,
-                predicate="intersect",
-                compact=False,
-                fix_antimeridian=fix_antimeridian,
-            )
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -224,7 +210,7 @@ class H3Pandas:
         return dggs_ids_to_geodataframe(
             self._df, ids, h3_to_geo, fix_antimeridian=fix_antimeridian
         )
-    
+
     def h3bin(
         self,
         resolution: int,
@@ -281,9 +267,7 @@ class H3Pandas:
         return self._df.join(result)
 
     def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
-        """Experimental. An H3 cell representation of a (Multi)LineString,
-        which permits repeated cells, but not if they are repeated in
-        immediate sequence.
+        """An H3 cell representation of a (Multi)LineString traced along its vertices.
 
         Parameters
         ----------
@@ -313,85 +297,11 @@ class H3Pandas:
 
         """
 
-        def func(row):
-            return list(linetrace(row.geometry, resolution))
-
-        df = self._df
-
-        result = df.apply(func, axis=1)
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
         if not explode:
-            assign_args = {H3_COL: result}
-            return df.assign(**assign_args)
+            return self._df.assign(**{H3_COL: result})
 
         result = result.explode().to_frame(H3_COL)
-        return df.join(result)
-
-    def _apply_index_assign(
-        self,
-        func: Callable,
-        col_name: str,
-        processor: Callable = lambda x: x,
-        finalizer: Callable = lambda x: x,
-    ) -> Any:
-        """Helper method. Applies `func` to index and assigns the result to `column`.
-
-        Parameters
-        ----------
-        func : Callable
-            single-argument function to be applied to each H3 id
-        col_name : str
-            name of the resulting column
-        processor : Callable
-            (Optional) further processes the result of func. Default: identity
-        finalizer : Callable
-            (Optional) further processes the resulting dataframe. Default: identity
-
-        Returns
-        -------
-        Dataframe with column `column` containing the result of `func`.
-        If using `finalizer`, can return anything the `finalizer` returns.
-        """
-        func = catch_invalid_dggs_id(func)
-        result = [processor(func(h3id)) for h3id in self._df.index]
-        assign_args = {col_name: result}
-        return finalizer(self._df.assign(**assign_args))
-
-    def _apply_index_explode(
-        self,
-        func: Callable,
-        col_name: str,
-        processor: Callable = lambda x: x,
-        finalizer: Callable = lambda x: x,
-    ) -> Any:
-        """Helper method. Applies a list-making `func` to index and performs
-        a vertical explode.
-        Any additional values are simply copied to all the rows.
-
-        Parameters
-        ----------
-        func : Callable
-            single-argument function to be applied to each H3 id
-        col_name : str
-            name of the resulting column
-        processor : Callable
-            (Optional) further processes the result of func. Default: identity
-        finalizer : Callable
-            (Optional) further processes the resulting dataframe. Default: identity
-
-        Returns
-        -------
-        Dataframe with column `column` containing the result of `func`.
-        If using `finalizer`, can return anything the `finalizer` returns.
-        """
-        func = catch_invalid_dggs_id(func)
-        result = (
-            pd.DataFrame.from_dict(
-                {h3id: processor(func(h3id)) for h3id in self._df.index},
-                orient="index",
-            )
-            .stack()
-            .to_frame(col_name)
-            .reset_index(level=1, drop=True)
-        )
-        result = self._df.join(result)
-        return finalizer(result)
+        return self._df.join(result)
