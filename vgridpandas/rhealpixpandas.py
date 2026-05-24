@@ -176,12 +176,12 @@ class rHEALPixPandas:
             latlon_to_rhealpix(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        rhealpix_column = RHEALPIX_COL
-        assign_arg = {rhealpix_column: rhealpix_ids, f"{rhealpix_column}_res": resolution}
+        rhealpix_col = RHEALPIX_COL
+        assign_arg = {rhealpix_col: rhealpix_ids, f"{rhealpix_col}_res": resolution}
 
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(rhealpix_column)
+            return df.set_index(rhealpix_col)
         return df
 
     def rhealpix2geo(

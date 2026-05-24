@@ -63,7 +63,7 @@ class MaidenheadPandas:
             latlon_to_maidenhead(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # maidenhead_column = self._format_resolution(resolution)
+        # maidenhead_col = self._format_resolution(resolution)
         maidenhead_col = MAIDENHEAD_COL
         assign_arg = {maidenhead_col: maidenhead_ids, f"{maidenhead_col}_res": resolution}
         df = self._df.assign(**assign_arg)

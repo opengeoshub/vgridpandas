@@ -72,11 +72,11 @@ class DGGRIDPandas:
             for lat, lon in zip(lats, lons)
         ]
 
-        dggrid_column = f"dggrid_{dggs_type.lower()}"
-        assign_arg = {dggrid_column: dggrid_ids, f"{dggrid_column}_res": resolution}
+        dggrid_col = f"dggrid_{dggs_type.lower()}"
+        assign_arg = {dggrid_col: dggrid_ids, f"{dggrid_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(dggrid_column)
+            return df.set_index(dggrid_col)
         return df
 
     def dggrid2geo(
@@ -84,7 +84,7 @@ class DGGRIDPandas:
         dggrid_instance,
         dggs_type: str,
         resolution: int,
-        dggrid_column: str = None,
+        dggrid_col: str = None,
         address_type: str = "SEQNUM",
     ) -> GeoDataFrame:
         """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
@@ -97,7 +97,7 @@ class DGGRIDPandas:
             DGGRID type
         resolution : int
             DGGRID resolution
-        dggrid_column : str, optional
+        dggrid_col : str, optional
             Name of the column containing DGGRID ids. Defaults to ``dggrid_{dggs_type}``.
         address_type : str
             Address type, default 'SEQNUM'
@@ -111,10 +111,10 @@ class DGGRIDPandas:
         ValueError
             When an invalid DGGRID id is encountered
         """
-        if dggrid_column is None:
-            dggrid_column = f"dggrid_{dggs_type.lower()}"
-        if dggrid_column not in self._df.columns:
-            raise ValueError(f"Column '{dggrid_column}' not found in DataFrame")
+        if dggrid_col is None:
+            dggrid_col = f"dggrid_{dggs_type.lower()}"
+        if dggrid_col not in self._df.columns:
+            raise ValueError(f"Column '{dggrid_col}' not found in DataFrame")
 
         def to_geo(token):
             gdf = dggrid_to_geo(
@@ -122,7 +122,7 @@ class DGGRIDPandas:
             )
             return gdf.geometry.iloc[0] if gdf is not None and len(gdf) else Polygon()
 
-        return dggs_ids_to_geodataframe(self._df, self._df[dggrid_column], to_geo)
+        return dggs_ids_to_geodataframe(self._df, self._df[dggrid_col], to_geo)
 
     def dggridbin(
         self,
@@ -151,6 +151,6 @@ class DGGRIDPandas:
             dggrid_instance,
             dggs_type,
             resolution,
-            dggrid_column=dggrid_col,
+            dggrid_col=dggrid_col,
             address_type=address_type,
         )

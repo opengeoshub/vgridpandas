@@ -155,11 +155,11 @@ class DGGALPandas:
             for lat, lon in zip(lats, lons)
         ]
 
-        dggal_column = f"dggal_{dggs_type}"
-        assign_arg = {dggal_column: dggal_ids, f"{dggal_column}_res": resolution}
+        dggal_col = f"dggal_{dggs_type}"
+        assign_arg = {dggal_col: dggal_ids, f"{dggal_col}_res": resolution}
         df = self._df.assign(**assign_arg)
         if set_index:
-            return df.set_index(dggal_column)
+            return df.set_index(dggal_col)
         return df
 
     def dggal2geo(self, dggs_type: str, dggal_col: str = None) -> GeoDataFrame:

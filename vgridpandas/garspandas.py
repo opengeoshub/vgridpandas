@@ -60,7 +60,6 @@ class GARSPandas:
             latlon_to_gars(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # gars_column = self._format_resolution(resolution)
         gars_col = GARS_COL
         assign_arg = {gars_col: gars_ids, f"{gars_col}_res": resolution}
         df = self._df.assign(**assign_arg)
