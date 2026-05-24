@@ -61,7 +61,7 @@ class MGRSPandas:
             latlon_to_mgrs(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # mgrs_column = self._format_resolution(resolution)
+        # mgrs_col = self._format_resolution(resolution)
         mgrs_col = MGRS_COL
         assign_arg = {mgrs_col: mgrs_ids, f"{mgrs_col}_res": resolution}
         df = self._df.assign(**assign_arg)

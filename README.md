@@ -35,16 +35,14 @@ pip install vgridpandas --upgrade
 
 ## Key Features
 
-- **Latlong to DGGS:** Convert latitude and longitude coordinates into DGGS cell IDs.
+- **Latlon to DGGS:** Convert latitude and longitude coordinates into DGGS cell IDs.
 - **DGGS to geo boundary:** Convert DGGS cell IDs into their corresponding geographic boundaries.
 - **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
 - **DGGS binning:** Aggregate points into DGGS cells, supporting common statistics (count, min, max, etc.) and category-based groups.
 
-- **DGGS resample:** Cross-grid resampling (e.g. H3 to S2) is available in the companion [vgrid](https://pypi.org/project/vgrid/) package via `dggsresample`.
-
 ## Usage examples
 
-### Latlong to DGGS
+### Latlon to DGGS
 
 ```python
 import pandas as pd
@@ -90,32 +88,26 @@ gdf_polyfill.plot(edgecolor = "white")
 ### DGGS Binning
 ```python
 import pandas as pd
-import geopandas as gpd
-from vgridpandas import a5pandas
-resolution = 15
-df = pd.read_csv("https://raw.githubusercontent.com/opengeoshub/vopendata/refs/heads/main/csv/dist1_pois.csv")
-stats = "count"
-df_bin = df.a5.a5bin(resolution=resolution, stats = stats, 
-                    # numeric_column="confidence",
-                    # category_column="category",
-                    return_geometry=True)
+
+resolution = 4
+df = pd.read_csv('https://raw.githubusercontent.com/opengeoshub/vopendata/main/csv/dist1_pois.csv')
+stats = 'count'
+df_bin = df.a5.a5bin(resolution=resolution,
+                    lat_col='lat',
+                    lon_col='lon',
+                    stats=stats,
+                    # numeric_col=numeric_col,
+                    # category_col= category_col,
+                    )
 df_bin.plot(
-    column=stats,        # numeric column to base the colors on
-    cmap='Spectral_r',   # color scheme (matplotlib colormap)
-    legend=True,  
-    linewidth=0.2         # boundary width (optional)
+    column=f'{numeric_col}_{stats}',
+    cmap='Spectral_r',
+    legend=True,
+    linewidth=0.2,
 )
 ```
 <div align="center">
   <img src="https://raw.githubusercontent.com/thangqd/vgridtools/main/images/readme/a5bin.png">
-</div>
-
-### DGGS Resample
-
-Cross-grid resampling (e.g. H3 to S2) is available in [vgrid](https://pypi.org/project/vgrid/) via `dggsresample`. See the [vgrid documentation](https://vgrid.gishub.vn) for CLI and Python API details.
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/opengeoshub/vgridtools/main/images/readme/dggsresampling_h32s2.png">
 </div>
 
 ### Further examples

@@ -60,7 +60,7 @@ class GEOREFPandas:
             latlon_to_georef(lat, lon, resolution) for lat, lon in zip(lats, lons)
         ]
 
-        # georef_column = self._format_resolution(resolution)
+        # georef_col = self._format_resolution(resolution)
         georef_col = GEOREF_COL
         assign_arg = {georef_col: georef_ids, f"{georef_col}_res": resolution}
         df = self._df.assign(**assign_arg)
