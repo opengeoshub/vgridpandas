@@ -141,5 +141,3 @@ dmypy.json
 *.geojson
 # IDE settings
 .vscode/
-
-docs/changelog_update.py

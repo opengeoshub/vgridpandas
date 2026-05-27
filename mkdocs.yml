@@ -127,5 +127,5 @@ nav:
         - GARSPandas: api/garspandas.md
 
     - Contributing: contributing.md
-    - Changelog: changelog.md
+    # - Changelog: changelog.md
     - Report Issues: https://github.com/opengeoshub/vgridpandas/issues
