@@ -57,13 +57,13 @@ jobs:
                   uv run mkdocs build
 
             - name: Deploy to Cloudflare Pages
-              uses: cloudflare/pages-action@v1
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: cloudflare/wrangler-action@v4
               with:
                   apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
                   accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-                  projectName: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
-                  directory: ./site
                   gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+                  command: pages deploy ./site --project-name=${{ secrets.CLOUDFLARE_PROJECT_NAME }}
             - name: Cleanup
               if: always()
               run: |
