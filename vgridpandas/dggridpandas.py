@@ -1,7 +1,7 @@
-"""S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
+"""DGGRIDPandas module for DGGRID cell operations on pandas DataFrames and GeoDataFrames."""
 
-from typing import Union
-from shapely.geometry import Polygon
+from typing import Union, Iterator
+from shapely.geometry import Polygon, LineString, MultiLineString
 import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
@@ -10,8 +10,36 @@ from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgrid.conversion.latlon2dggs import latlon2dggrid as latlon_to_dggrid
 from vgrid.conversion.dggs2geo.dggrid2geo import dggrid2geo as dggrid_to_geo
+from vgrid.conversion.vector2dggs.vector2dggrid import polyline2dggrid
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
+
+
+def linetrace(
+    dggrid_instance,
+    dggs_type: str,
+    geometry: MultiLineOrLine,
+    resolution: int,
+    address_type: str = "SEQNUM",
+    split_antimeridian: bool = False,
+) -> Iterator[str]:
+    """Trace a (Multi)LineString with DGGRID cells (same walk as ``polyline2dggrid``)."""
+    gdf = polyline2dggrid(
+        dggrid_instance,
+        dggs_type,
+        geometry,
+        resolution,
+        include_properties=False,
+        output_address_type=address_type,
+        split_antimeridian=split_antimeridian,
+    )
+    if gdf is None or gdf.empty:
+        return
+    id_col = "seqnum" if address_type == "SEQNUM" else address_type.lower()
+    if id_col not in gdf.columns:
+        return
+    yield from (str(cell_id) for cell_id in gdf[id_col])
 
 
 @pd.api.extensions.register_dataframe_accessor("dggrid")
@@ -67,7 +95,12 @@ class DGGRIDPandas:
 
         dggrid_ids = [
             latlon_to_dggrid(
-                dggrid_instance, dggs_type, lat, lon, resolution, address_type
+                dggrid_instance,
+                dggs_type,
+                lat,
+                lon,
+                resolution,
+                output_address_type=address_type,
             )
             for lat, lon in zip(lats, lons)
         ]
@@ -86,6 +119,7 @@ class DGGRIDPandas:
         resolution: int,
         dggrid_col: str = None,
         address_type: str = "SEQNUM",
+        split_antimeridian: bool = False,
     ) -> GeoDataFrame:
         """Add geometry with DGGRID geometry to the DataFrame. Assumes DGGRID id.
 
@@ -101,6 +135,8 @@ class DGGRIDPandas:
             Name of the column containing DGGRID ids. Defaults to ``dggrid_{dggs_type}``.
         address_type : str
             Address type, default 'SEQNUM'
+        split_antimeridian : bool, optional
+            Split antimeridian-crossing cells if True.
 
         Returns
         -------
@@ -118,23 +154,66 @@ class DGGRIDPandas:
 
         def to_geo(token):
             gdf = dggrid_to_geo(
-                dggrid_instance, dggs_type, token, resolution, address_type
+                dggrid_instance,
+                dggs_type,
+                token,
+                resolution,
+                input_address_type=address_type,
+                split_antimeridian=split_antimeridian,
             )
             return gdf.geometry.iloc[0] if gdf is not None and len(gdf) else Polygon()
 
-        return dggs_ids_to_geodataframe(self._df, self._df[dggrid_col], to_geo)
+        return dggs_ids_to_geodataframe(
+            self._df,
+            self._df[dggrid_col],
+            to_geo,
+            split_antimeridian=split_antimeridian,
+        )
+
+    def linetrace(
+        self,
+        dggrid_instance,
+        dggs_type: str,
+        resolution: int,
+        explode: bool = False,
+        address_type: str = "SEQNUM",
+        split_antimeridian: bool = False,
+    ) -> AnyDataFrame:
+        """DGGRID cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2dggrid.polyline2dggrid``.
+        """
+        result = self._df.apply(
+            lambda row: list(
+                linetrace(
+                    dggrid_instance,
+                    dggs_type,
+                    row.geometry,
+                    resolution,
+                    address_type=address_type,
+                    split_antimeridian=split_antimeridian,
+                )
+            ),
+            axis=1,
+        )
+        col = f"dggrid_{dggs_type.lower()}"
+        if not explode:
+            return self._df.assign(**{col: result})
+        result = result.explode().to_frame(col)
+        return self._df.join(result)
 
     def dggridbin(
         self,
         dggrid_instance,
         dggs_type: str,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
         lon_col: str = "lon",
         address_type: str = "SEQNUM",
+        split_antimeridian: bool = False,
     ) -> GeoDataFrame:
         """Bin points into DGGRID cells and compute statistics."""
         dggrid_col = f"dggrid_{dggs_type.lower()}"
@@ -146,11 +225,12 @@ class DGGRIDPandas:
             lon_col,
             address_type=address_type,
         )
-        result = aggregate_bin(df, dggrid_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, dggrid_col, agg, numeric_col, category_col)
         return result.dggrid.dggrid2geo(
             dggrid_instance,
             dggs_type,
             resolution,
             dggrid_col=dggrid_col,
             address_type=address_type,
+            split_antimeridian=split_antimeridian,
         )

@@ -214,7 +214,7 @@ class H3Pandas:
     def h3bin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -226,7 +226,7 @@ class H3Pandas:
         """
         h3_col = H3_COL
         df = self.latlon2h3(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, h3_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, h3_col, agg, numeric_col, category_col)
         return result.h3.h32geo(h3_col=h3_col, fix_antimeridian=fix_antimeridian)
 
     def polyfill(

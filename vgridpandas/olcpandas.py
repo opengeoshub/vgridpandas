@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -14,9 +14,11 @@ from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
 from vgrid.conversion.dggs2geo.olc2geo import olc2geo as olc_to_geo
+from vgrid.conversion.vector2dggs.vector2olc import polyline2olc
 from vgridpandas.utils.const import OLC_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 
 from typing import Union, Set
@@ -101,14 +103,19 @@ def poly2olc(
     return olc_ids
 
 
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with OLC cells (same walk as ``polyline2olc``)."""
+    rows = polyline2olc(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[OLC_COL]
+
+
 def polyfill_row(geometry, resolution, predicate=None, compact=False) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(poly2olc(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2olc(geometry, resolution, predicate="intersect", compact=False)
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -213,10 +220,23 @@ class OLCPandas:
         result = result.explode().to_frame(OLC_COL)
         return self._df.join(result)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """OLC cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2olc.polyline2olc``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{OLC_COL: result})
+        result = result.explode().to_frame(OLC_COL)
+        return self._df.join(result)
+
     def olcbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -227,5 +247,5 @@ class OLCPandas:
         """
         olc_col = OLC_COL
         df = self.latlon2olc(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, olc_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, olc_col, agg, numeric_col, category_col)
         return result.olc.olc2geo(olc_col=olc_col)

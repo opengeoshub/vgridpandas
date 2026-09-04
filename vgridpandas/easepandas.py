@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -16,12 +16,14 @@ from vgridpandas.utils.const import EASE_COL
 from vgrid.conversion.latlon2dggs import latlon2ease as latlon_to_ease
 from vgrid.conversion.dggs2geo.ease2geo import ease2geo as ease_to_geo
 from vgrid.conversion.dggscompact.easecompact import ease_compact
+from vgrid.conversion.vector2dggs.vector2ease import polyline2ease
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_ease_resolution
 from ease_dggs.constants import levels_specs, geo_crs, ease_crs
 from ease_dggs.dggs.grid_addressing import geo_polygon_to_grid_ids
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 
 def poly2ease(
@@ -106,14 +108,19 @@ def poly2ease(
     return list(dict.fromkeys(ease_ids))
 
 
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with EASE cells (same walk as ``polyline2ease``)."""
+    rows = polyline2ease(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[EASE_COL]
+
+
 def polyfill_row(geometry, resolution, predicate=None, compact=False) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(poly2ease(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2ease(geometry, resolution, predicate="intersect", compact=False)
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -215,10 +222,23 @@ class EASEPandas:
         result = result.explode().to_frame(EASE_COL)
         return self._df.join(result)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """EASE cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2ease.polyline2ease``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{EASE_COL: result})
+        result = result.explode().to_frame(EASE_COL)
+        return self._df.join(result)
+
     def easebin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -229,5 +249,5 @@ class EASEPandas:
         """
         ease_col = EASE_COL
         df = self.latlon2ease(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, ease_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, ease_col, agg, numeric_col, category_col)
         return result.ease.ease2geo(ease_col=ease_col)

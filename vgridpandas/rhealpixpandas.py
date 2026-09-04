@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union, Optional, Iterator
 from collections import deque
 from shapely.geometry import (
     Polygon,
@@ -16,6 +16,7 @@ from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgrid.conversion.latlon2dggs import latlon2rhealpix as latlon_to_rhealpix
 from vgrid.conversion.dggs2geo.rhealpix2geo import rhealpix2geo as rhealpix_to_geo
 from vgrid.conversion.dggscompact.rhealpixcompact import rhealpix_compact
+from vgrid.conversion.vector2dggs.vector2rhealpix import polyline2rhealpix
 from vgrid.utils.geometry import check_predicate
 from vgrid.utils.io import validate_rhealpix_resolution
 from vgridpandas.utils.const import RHEALPIX_COL
@@ -23,6 +24,7 @@ from vgrid.dggs.rhealpixdggs.dggs import RHEALPixDGGS
 from vgrid.dggs.rhealpixdggs.ellipsoids import WGS84_ELLIPSOID
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 rhealpix_dggs = RHEALPixDGGS(
     ellipsoid=WGS84_ELLIPSOID, north_square=1, south_square=3, N_side=3
@@ -102,6 +104,22 @@ def poly2rhealpix(
     return list(dict.fromkeys(rhealpix_ids))
 
 
+def linetrace(
+    geometry: MultiLineOrLine,
+    resolution: int,
+    fix_antimeridian: Optional[str] = None,
+) -> Iterator[str]:
+    """Trace a (Multi)LineString with rHEALPix cells (same walk as ``polyline2rhealpix``)."""
+    rows = polyline2rhealpix(
+        geometry,
+        resolution,
+        include_properties=False,
+        fix_antimeridian=fix_antimeridian,
+    )
+    for row in rows:
+        yield row[RHEALPIX_COL]
+
+
 def polyfill_row(
     geometry,
     resolution,
@@ -117,15 +135,7 @@ def polyfill_row(
             )
         )
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2rhealpix(
-                geometry,
-                resolution,
-                predicate="intersect",
-                compact=False,
-                fix_antimeridian=fix_antimeridian,
-            )
-        )
+        tokens = set(linetrace(geometry, resolution, fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -238,10 +248,33 @@ class rHEALPixPandas:
         result = result.explode().to_frame(RHEALPIX_COL)
         return self._df.join(result)
 
+    def linetrace(
+        self,
+        resolution: int,
+        explode: bool = False,
+        fix_antimeridian: Optional[str] = None,
+    ) -> AnyDataFrame:
+        """rHEALPix cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2rhealpix.polyline2rhealpix``.
+        """
+        result = self._df.apply(
+            lambda row: list(
+                linetrace(
+                    row.geometry, resolution, fix_antimeridian=fix_antimeridian
+                )
+            ),
+            axis=1,
+        )
+        if not explode:
+            return self._df.assign(**{RHEALPIX_COL: result})
+        result = result.explode().to_frame(RHEALPIX_COL)
+        return self._df.join(result)
+
     def rhealpixbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -253,7 +286,7 @@ class rHEALPixPandas:
         """
         rhealpix_col = RHEALPIX_COL
         df = self.latlon2rhealpix(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, rhealpix_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, rhealpix_col, agg, numeric_col, category_col)
         return result.rhealpix.rhealpix2geo(
             rhealpix_col=rhealpix_col, fix_antimeridian=fix_antimeridian
         )

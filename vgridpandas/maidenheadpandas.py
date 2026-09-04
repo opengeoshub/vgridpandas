@@ -1,14 +1,25 @@
-from typing import Union
+from typing import Union, Iterator
 import pandas as pd
 import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 from vgrid.conversion.latlon2dggs import latlon2maidenhead as latlon_to_maidenhead
 from vgrid.conversion.dggs2geo.maidenhead2geo import maidenhead2geo as maidenhead_to_geo
+from vgrid.conversion.vector2dggs.vector2maidenhead import polyline2maidenhead
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgridpandas.utils.const import MAIDENHEAD_COL
+
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
+
+
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with Maidenhead cells (same walk as ``polyline2maidenhead``)."""
+    rows = polyline2maidenhead(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[MAIDENHEAD_COL]
 
 
 @pd.api.extensions.register_dataframe_accessor("maidenhead")
@@ -83,10 +94,23 @@ class MaidenheadPandas:
             ids = self._df[MAIDENHEAD_COL]
         return dggs_ids_to_geodataframe(self._df, ids, maidenhead_to_geo)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """Maidenhead cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2maidenhead.polyline2maidenhead``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{MAIDENHEAD_COL: result})
+        result = result.explode().to_frame(MAIDENHEAD_COL)
+        return self._df.join(result)
+
     def maidenheadbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -97,5 +121,5 @@ class MaidenheadPandas:
         """
         maidenhead_col = MAIDENHEAD_COL
         df = self.latlon2maidenhead(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, maidenhead_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, maidenhead_col, agg, numeric_col, category_col)
         return result.maidenhead.maidenhead2geo(maidenhead_col=maidenhead_col)

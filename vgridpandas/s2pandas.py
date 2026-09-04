@@ -1,6 +1,6 @@
 """S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
 
-from typing import Union, Optional
+from typing import Union, Optional, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -14,22 +14,24 @@ import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
+from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe, linetrace_polyline
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgrid.conversion.latlon2dggs import latlon2s2 as latlon_to_s2
 from vgrid.conversion.dggs2geo.s22geo import s22geo as s2_to_geo
+from vgrid.conversion.vector2dggs.vector2s2 import _s2_segment_cells
 from vgridpandas.utils.const import S2_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 
 def poly2s2(geometry, resolution, predicate=None, compact=False, fix_antimeridian=None):
-    """Convert polygon or line geometries to S2 grid cell tokens."""
+    """Convert polygon geometries to S2 grid cell tokens."""
     resolution = validate_s2_resolution(resolution)
     s2_tokens = []
-    if isinstance(geometry, (Polygon, LineString)):
+    if isinstance(geometry, Polygon):
         polys = [geometry]
-    elif isinstance(geometry, (MultiPolygon, MultiLineString)):
+    elif isinstance(geometry, MultiPolygon):
         polys = list(geometry.geoms)
     else:
         return []
@@ -61,6 +63,22 @@ def poly2s2(geometry, resolution, predicate=None, compact=False, fix_antimeridia
     return s2_tokens
 
 
+def linetrace(
+    geometry: MultiLineOrLine,
+    resolution: int,
+    fix_antimeridian: Optional[str] = None,
+) -> Iterator[str]:
+    """Trace a (Multi)LineString with S2 cells (same walk as ``polyline2s2``)."""
+    resolution = validate_s2_resolution(resolution)
+
+    def segment_cells(start_xy, end_xy):
+        return _s2_segment_cells(
+            resolution, start_xy, end_xy, fix_antimeridian=fix_antimeridian
+        )
+
+    yield from linetrace_polyline(geometry, segment_cells)
+
+
 def polyfill_row(
     geometry,
     resolution: int,
@@ -74,15 +92,7 @@ def polyfill_row(
             poly2s2(geometry, resolution, predicate, compact, fix_antimeridian)
         )
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2s2(
-                geometry,
-                resolution,
-                predicate="intersect",
-                compact=False,
-                fix_antimeridian=fix_antimeridian,
-            )
-        )
+        tokens = set(linetrace(geometry, resolution, fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -199,7 +209,7 @@ class S2Pandas:
     def s2bin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -209,5 +219,28 @@ class S2Pandas:
         """Bin points into S2 cells and compute statistics."""
         s2_col = S2_COL
         df = self.latlon2s2(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, s2_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, s2_col, agg, numeric_col, category_col)
         return result.s2.s22geo(s2_col=s2_col, fix_antimeridian=fix_antimeridian)
+
+    def linetrace(
+        self,
+        resolution: int,
+        explode: bool = False,
+        fix_antimeridian: Optional[str] = None,
+    ) -> AnyDataFrame:
+        """S2 cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same neighbor walk as ``vgrid.conversion.vector2dggs.vector2s2.polyline2s2``.
+        """
+        result = self._df.apply(
+            lambda row: list(
+                linetrace(
+                    row.geometry, resolution, fix_antimeridian=fix_antimeridian
+                )
+            ),
+            axis=1,
+        )
+        if not explode:
+            return self._df.assign(**{S2_COL: result})
+        result = result.explode().to_frame(S2_COL)
+        return self._df.join(result)
