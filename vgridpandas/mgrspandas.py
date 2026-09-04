@@ -84,7 +84,7 @@ class MGRSPandas:
     def mgrsbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -95,5 +95,5 @@ class MGRSPandas:
         """
         mgrs_col = MGRS_COL
         df = self.latlon2mgrs(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, mgrs_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, mgrs_col, agg, numeric_col, category_col)
         return result.mgrs.mgrs2geo(mgrs_col=mgrs_col)

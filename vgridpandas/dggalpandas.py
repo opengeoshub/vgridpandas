@@ -1,71 +1,52 @@
-"""S2Pandas module for S2 cell operations on pandas DataFrames and GeoDataFrames."""
+"""DGGALPandas module for DGGAL cell operations on pandas DataFrames and GeoDataFrames."""
 
-from typing import Union
+from typing import Union, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
     LineString,
     MultiLineString,
+    Point,
+    MultiPoint,
 )
 import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
+from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe, linetrace_polyline
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgrid.conversion.latlon2dggs import latlon2dggal as latlon_to_dggal
 from vgrid.conversion.dggs2geo.dggal2geo import dggal2geo as dggal_to_geo
-
-AnyDataFrame = Union[DataFrame, GeoDataFrame]
-
-
-from typing import Union
-from shapely.geometry import (
-    Point,
-    MultiPoint,
-)
 from dggal import *
 from vgrid.utils.geometry import check_predicate
-from vgrid.conversion.dggs2geo.dggal2geo import dggal2geo
 from vgrid.utils.io import validate_dggal_resolution
 from vgrid.conversion.dggscompact.dggalcompact import dggal_compact
 from vgrid.utils.constants import DGGAL_TYPES
+from vgrid.conversion.vector2dggs.vector2dggal import _dggal_segment_cells
 
+AnyDataFrame = Union[DataFrame, GeoDataFrame]
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
 MultiPointOrPoint = Union[Point, MultiPoint]
 
 
-def poly2dggal(dggs_type, geometry, resolution, predicate=None, compact=False):
-    """
-    Convert polygon geometries (Polygon, MultiPolygon) to DGGAL grid cells.
-
-    Args:
-        dggs_type: str
-            DGGAL type
-        resolution (int): DGGAL resolution level [0..28]
-        geometry (shapely.geometry.Polygon or shapely.geometry.MultiPolygon): Polygon geometry to convert
-        predicate (str, optional): Spatial predicate to apply ('intersect', 'within', 'centroid_within', 'largest_overlap')
-
-    Returns:
-        list: List of DGGAL tokens intersecting the polygon
-
-    Example:
-        >>> from shapely.geometry import Polygon
-        >>> poly = Polygon([(-122.5, 37.7), (-122.3, 37.7), (-122.3, 37.9), (-122.5, 37.9)])
-        >>> cells = poly2dggal(poly, 10, predicate="intersect", compact=True)
-        >>> len(cells) > 0
-        True
-    """
-
+def poly2dggal(
+    dggs_type,
+    geometry,
+    resolution,
+    predicate=None,
+    compact=False,
+    split_antimeridian: bool = False,
+):
+    """Convert polygon geometries to DGGAL grid cells."""
     dggs_class_name = DGGAL_TYPES[dggs_type]["class_name"]
     dggrs = globals()[dggs_class_name]()
 
     resolution = validate_dggal_resolution(dggs_type, resolution)
     dggal_ids = []
-    if isinstance(geometry, (Polygon, LineString)):
+    if isinstance(geometry, Polygon):
         polys = [geometry]
-    elif isinstance(geometry, (MultiPolygon, MultiLineString)):
+    elif isinstance(geometry, MultiPolygon):
         polys = list(geometry.geoms)
     else:
         return []
@@ -78,7 +59,9 @@ def poly2dggal(dggs_type, geometry, resolution, predicate=None, compact=False):
         zones = dggrs.listZones(resolution, geo_extent)
         for zone in zones:
             zone_id = dggrs.getZoneTextID(zone)
-            cell_polygon = dggal2geo(dggs_type, zone_id)
+            cell_polygon = dggal_to_geo(
+                dggs_type, zone_id, split_antimeridian=split_antimeridian
+            )
             if not check_predicate(cell_polygon, poly, predicate):
                 continue
             dggal_ids.append(zone_id)
@@ -87,16 +70,57 @@ def poly2dggal(dggs_type, geometry, resolution, predicate=None, compact=False):
     return dggal_ids
 
 
+def linetrace(
+    dggs_type: str,
+    geometry: MultiLineOrLine,
+    resolution: int,
+    split_antimeridian: bool = False,
+) -> Iterator[str]:
+    """Trace a (Multi)LineString with DGGAL cells (same walk as ``polyline2dggal``)."""
+    resolution = validate_dggal_resolution(dggs_type, resolution)
+    dggs_class_name = DGGAL_TYPES[dggs_type]["class_name"]
+    dggrs = globals()[dggs_class_name]()
+
+    def segment_cells(start_xy, end_xy):
+        return _dggal_segment_cells(
+            dggs_type,
+            dggrs,
+            resolution,
+            start_xy,
+            end_xy,
+            split_antimeridian=split_antimeridian,
+        )
+
+    yield from linetrace_polyline(geometry, segment_cells)
+
+
 def polyfill_row(
-    dggs_type, geometry, resolution, predicate=None, compact=False
+    dggs_type,
+    geometry,
+    resolution,
+    predicate=None,
+    compact=False,
+    split_antimeridian: bool = False,
 ) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
-        tokens = set(poly2dggal(dggs_type, geometry, resolution, predicate, compact))
-    elif isinstance(geometry, (LineString, MultiLineString)):
         tokens = set(
             poly2dggal(
-                dggs_type, geometry, resolution, predicate="intersect", compact=False
+                dggs_type,
+                geometry,
+                resolution,
+                predicate,
+                compact,
+                split_antimeridian,
+            )
+        )
+    elif isinstance(geometry, (LineString, MultiLineString)):
+        tokens = set(
+            linetrace(
+                dggs_type,
+                geometry,
+                resolution,
+                split_antimeridian=split_antimeridian,
             )
         )
     else:
@@ -162,15 +186,28 @@ class DGGALPandas:
             return df.set_index(dggal_col)
         return df
 
-    def dggal2geo(self, dggs_type: str, dggal_col: str = None) -> GeoDataFrame:
-        """Add geometry with DGGAL geometry to the DataFrame."""
+    def dggal2geo(
+        self,
+        dggs_type: str,
+        dggal_col: str = None,
+        split_antimeridian: bool = False,
+    ) -> GeoDataFrame:
+        """Add geometry with DGGAL geometry to the DataFrame.
+
+        Parameters
+        ----------
+        split_antimeridian : bool, optional
+            Split antimeridian-crossing cells. Default: False
+        """
         if dggal_col is None:
             dggal_col = f"dggal_{dggs_type}"
         if dggal_col not in self._df.columns:
             raise ValueError(f"Column '{dggal_col}' not found in DataFrame")
 
         def to_geo(token):
-            return dggal_to_geo(dggs_type, token)
+            return dggal_to_geo(
+                dggs_type, token, split_antimeridian=split_antimeridian
+            )
 
         return dggs_ids_to_geodataframe(self._df, self._df[dggal_col], to_geo)
 
@@ -181,6 +218,7 @@ class DGGALPandas:
         predicate: str = None,
         compact: bool = False,
         explode: bool = False,
+        split_antimeridian: bool = False,
     ) -> AnyDataFrame:
         """
         Parameters
@@ -195,10 +233,20 @@ class DGGALPandas:
             If True, will explode the resulting list vertically.
             All other columns' values are copied.
             Default: False
+        split_antimeridian : bool, optional
+            Split antimeridian-crossing cells when converting to geometry.
+            Default: False
         """
 
         result = self._df.geometry.apply(
-            lambda geom: polyfill_row(dggs_type, geom, resolution, predicate, compact)
+            lambda geom: polyfill_row(
+                dggs_type,
+                geom,
+                resolution,
+                predicate,
+                compact,
+                split_antimeridian,
+            )
         )
 
         if not explode:
@@ -207,18 +255,52 @@ class DGGALPandas:
         result = result.explode().to_frame(f"dggal_{dggs_type}")
         return self._df.join(result)
 
+    def linetrace(
+        self,
+        dggs_type: str,
+        resolution: int,
+        explode: bool = False,
+        split_antimeridian: bool = False,
+    ) -> AnyDataFrame:
+        """DGGAL cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same neighbor walk as
+        ``vgrid.conversion.vector2dggs.vector2dggal.polyline2dggal``.
+        """
+        result = self._df.apply(
+            lambda row: list(
+                linetrace(
+                    dggs_type,
+                    row.geometry,
+                    resolution,
+                    split_antimeridian=split_antimeridian,
+                )
+            ),
+            axis=1,
+        )
+        col = f"dggal_{dggs_type}"
+        if not explode:
+            return self._df.assign(**{col: result})
+        result = result.explode().to_frame(col)
+        return self._df.join(result)
+
     def dggalbin(
         self,
         dggs_type: str,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
         lon_col: str = "lon",
+        split_antimeridian: bool = False,
     ) -> GeoDataFrame:
         """Bin points into DGGAL cells and compute statistics."""
         dggal_col = f"dggal_{dggs_type}"
         df = self.latlon2dggal(dggs_type, resolution, lat_col, lon_col)
-        result = aggregate_bin(df, dggal_col, stats, numeric_col, category_col)
-        return result.dggal.dggal2geo(dggs_type, dggal_col=dggal_col)
+        result = aggregate_bin(df, dggal_col, agg, numeric_col, category_col)
+        return result.dggal.dggal2geo(
+            dggs_type,
+            dggal_col=dggal_col,
+            split_antimeridian=split_antimeridian,
+        )

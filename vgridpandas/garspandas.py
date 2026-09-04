@@ -1,14 +1,25 @@
-from typing import Union
+from typing import Union, Iterator
 import pandas as pd
 import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 from vgrid.conversion.latlon2dggs import latlon2gars as latlon_to_gars
 from vgrid.conversion.dggs2geo.gars2geo import gars2geo as gars_to_geo
+from vgrid.conversion.vector2dggs.vector2gars import polyline2gars
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgridpandas.utils.const import GARS_COL
+
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
+
+
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with GARS cells (same walk as ``polyline2gars``)."""
+    rows = polyline2gars(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[GARS_COL]
 
 
 @pd.api.extensions.register_dataframe_accessor("gars")
@@ -79,10 +90,23 @@ class GARSPandas:
             ids = self._df[GARS_COL]
         return dggs_ids_to_geodataframe(self._df, ids, gars_to_geo)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """GARS cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2gars.polyline2gars``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{GARS_COL: result})
+        result = result.explode().to_frame(GARS_COL)
+        return self._df.join(result)
+
     def garsbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -93,5 +117,5 @@ class GARSPandas:
         """
         gars_col = GARS_COL
         df = self.latlon2gars(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, gars_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, gars_col, agg, numeric_col, category_col)
         return result.gars.gars2geo(gars_col=gars_col)

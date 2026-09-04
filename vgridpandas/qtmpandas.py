@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import Union, List, Iterator
 
 from shapely.geometry import (
     Polygon,
@@ -14,6 +14,7 @@ from geopandas.geodataframe import GeoDataFrame
 from vgrid.conversion.latlon2dggs import latlon2qtm as latlon_to_qtm
 from vgrid.conversion.dggs2geo.qtm2geo import qtm2geo as qtm_to_geo
 from vgrid.conversion.dggscompact.qtmcompact import qtm_compact
+from vgrid.conversion.vector2dggs.vector2qtm import polyline2qtm
 from vgrid.dggs.qtm import constructGeometry, divideFacet
 from vgrid.utils.io import validate_qtm_resolution
 from vgrid.utils.geometry import check_predicate
@@ -23,6 +24,7 @@ from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgridpandas.utils.const import QTM_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 MultiPolyOrPoly = Union[Polygon, MultiPolygon]
 MultiLineOrLine = Union[LineString, MultiLineString]
@@ -120,14 +122,19 @@ def poly2qtm(
     return qtm_ids
 
 
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with QTM cells (same walk as ``polyline2qtm``)."""
+    rows = polyline2qtm(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[QTM_COL]
+
+
 def polyfill_row(geometry, resolution, predicate=None, compact=False) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(poly2qtm(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2qtm(geometry, resolution, predicate="intersect", compact=False)
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -205,10 +212,23 @@ class QTMPandas:
         result = result.explode().to_frame(QTM_COL)
         return self._df.join(result)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """QTM cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2qtm.polyline2qtm``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{QTM_COL: result})
+        result = result.explode().to_frame(QTM_COL)
+        return self._df.join(result)
+
     def qtmbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -217,5 +237,5 @@ class QTMPandas:
         """Bin points into qtm cells and compute statistics."""
         qtm_col = QTM_COL
         df = self.latlon2qtm(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, qtm_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, qtm_col, agg, numeric_col, category_col)
         return result.qtm.qtm2geo(qtm_col=qtm_col)

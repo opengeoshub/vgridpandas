@@ -1,15 +1,25 @@
-from typing import Union
+from typing import Union, Iterator
 import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
+from shapely.geometry import LineString, MultiLineString
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
 from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgridpandas.utils.const import GEOREF_COL
 from vgrid.conversion.latlon2dggs import latlon2georef as latlon_to_georef
 from vgrid.conversion.dggs2geo.georef2geo import georef2geo as georef_to_geo
+from vgrid.conversion.vector2dggs.vector2georef import polyline2georef
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
+
+
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with GEOREF cells (same walk as ``polyline2georef``)."""
+    rows = polyline2georef(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[GEOREF_COL]
 
 
 @pd.api.extensions.register_dataframe_accessor("georef")
@@ -80,10 +90,23 @@ class GEOREFPandas:
             ids = self._df[GEOREF_COL]
         return dggs_ids_to_geodataframe(self._df, ids, georef_to_geo)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """GEOREF cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2georef.polyline2georef``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{GEOREF_COL: result})
+        result = result.explode().to_frame(GEOREF_COL)
+        return self._df.join(result)
+
     def georefbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -94,5 +117,5 @@ class GEOREFPandas:
         """
         georef_col = GEOREF_COL
         df = self.latlon2georef(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, georef_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, georef_col, agg, numeric_col, category_col)
         return result.georef.georef2geo(georef_col=georef_col)

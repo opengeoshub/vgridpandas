@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -9,11 +9,12 @@ import pandas as pd
 import geopandas as gpd
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
-from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
+from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe, linetrace_polyline
 from vgridpandas.utils.bin_helpers import aggregate_bin
 
 from vgrid.conversion.latlon2dggs import latlon2tilecode as latlon_to_tilecode
 from vgrid.conversion.dggs2geo.tilecode2geo import tilecode2geo as tilecode_to_geo
+from vgrid.conversion.vector2dggs.vector2tilecode import _tilecode_segment_cells
 from vgridpandas.utils.const import TILECODE_COL
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
@@ -56,9 +57,9 @@ def poly2tilecode(
     """
 
     resolution = validate_tilecode_resolution(resolution)
-    if isinstance(geometry, (Polygon, LineString)):
+    if isinstance(geometry, Polygon):
         polys = [geometry]
-    elif isinstance(geometry, (MultiPolygon, MultiLineString)):
+    elif isinstance(geometry, MultiPolygon):
         polys = list(geometry.geoms)
     else:
         return []
@@ -98,14 +99,22 @@ def poly2tilecode(
     return tilecode_ids
 
 
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with Tilecode cells (same walk as ``polyline2tilecode``)."""
+    resolution = validate_tilecode_resolution(resolution)
+
+    def segment_cells(start_xy, end_xy):
+        return _tilecode_segment_cells(resolution, start_xy, end_xy)
+
+    yield from linetrace_polyline(geometry, segment_cells)
+
+
 def polyfill_row(geometry, resolution, predicate=None, compact=False) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(poly2tilecode(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2tilecode(geometry, resolution, predicate="intersect", compact=False)
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -215,7 +224,7 @@ class TilecodePandas:
     def tilecodebin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -226,5 +235,19 @@ class TilecodePandas:
         """
         tilecode_col = TILECODE_COL
         df = self.latlon2tilecode(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, tilecode_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, tilecode_col, agg, numeric_col, category_col)
         return result.tilecode.tilecode2geo(tilecode_col=tilecode_col)
+
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """Tilecode cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same neighbor walk as
+        ``vgrid.conversion.vector2dggs.vector2tilecode.polyline2tilecode``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{TILECODE_COL: result})
+        result = result.explode().to_frame(TILECODE_COL)
+        return self._df.join(result)

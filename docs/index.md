@@ -37,8 +37,8 @@ pip install vgridpandas --upgrade
 
 - **Latlon to DGGS:** Convert latitude and longitude coordinates into DGGS cell IDs.
 - **DGGS to geo boundary:** Convert DGGS cell IDs into their corresponding geographic boundaries.
-- **(Multi)Linestring/ (Multi)Polygon to DGGS:** Convert (Multi)Linestring/ (Multi)Polygon to DGGS, supporting compact option.
-- **DGGS binning:** Aggregate points into DGGS cells, supporting common statistics (count, min, max, etc.) and category-based groups.
+- **(Multi)Linestring / (Multi)Polygon to DGGS:** Convert (Multi)LineString via linetrace and (Multi)Polygon via polyfill, supporting compact option.
+- **DGGS binning:** Aggregate points into DGGS cells, supporting common aggregations (count, min, max, etc.) and category-based groups.
 
 ## Usage examples
 
@@ -91,16 +91,16 @@ import pandas as pd
 
 resolution = 4
 df = pd.read_csv('https://raw.githubusercontent.com/opengeoshub/vopendata/main/csv/dist1_pois.csv')
-stats = 'count'
+agg = 'count'
 df_bin = df.a5.a5bin(resolution=resolution,
                     lat_col='lat',
                     lon_col='lon',
-                    stats=stats,
+                    agg=agg,
                     # numeric_col=numeric_col,
                     # category_col= category_col,
                     )
 df_bin.plot(
-    column=f'{numeric_col}_{stats}',
+    column=f'{numeric_col}_{agg}',
     cmap='Spectral_r',
     legend=True,
     linewidth=0.2,

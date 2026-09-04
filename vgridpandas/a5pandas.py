@@ -318,7 +318,7 @@ class A5Pandas:
     def a5bin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -330,5 +330,5 @@ class A5Pandas:
         """
         a5_col = A5_COL
         df = self.latlon2a5(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, a5_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, a5_col, agg, numeric_col, category_col)
         return result.a5.a52geo(a5_col=a5_col, split_antimeridian=split_antimeridian)

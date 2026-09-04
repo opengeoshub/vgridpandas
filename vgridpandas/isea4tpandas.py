@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union, Optional, Iterator
 import platform
 from shapely.geometry import (
     Polygon,
@@ -17,9 +17,11 @@ from vgridpandas.utils.bin_helpers import aggregate_bin
 from vgridpandas.utils.const import ISEA4T_COL  
 from vgrid.conversion.dggs2geo.isea4t2geo import isea4t2geo as isea4t_to_geo
 from vgrid.conversion.dggscompact.isea4tcompact import isea4t_compact
+from vgrid.conversion.vector2dggs.vector2isea4t import polyline2isea4t
 from vgrid.utils.geometry import check_predicate
 
-AnyDataFrame = Union[DataFrame, GeoDataFrame]           
+AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString] 
 
 if platform.system() == "Windows":
     from vgrid.dggs.eaggr.enums.shape_string_format import ShapeStringFormat
@@ -114,6 +116,22 @@ def poly2isea4t(
     return list(dict.fromkeys(isea4t_ids))
 
 
+def linetrace(
+    geometry: MultiLineOrLine,
+    resolution: int,
+    fix_antimeridian: Optional[str] = None,
+) -> Iterator[str]:
+    """Trace a (Multi)LineString with ISEA4T cells (same walk as ``polyline2isea4t``)."""
+    rows = polyline2isea4t(
+        geometry,
+        resolution,
+        include_properties=False,
+        fix_antimeridian=fix_antimeridian,
+    )
+    for row in rows:
+        yield row[ISEA4T_COL]
+
+
 def polyfill_row(
     geometry,
     resolution,
@@ -127,15 +145,7 @@ def polyfill_row(
             poly2isea4t(geometry, resolution, predicate, compact, fix_antimeridian)
         )
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2isea4t(
-                geometry,
-                resolution,
-                predicate="intersect",
-                compact=False,
-                fix_antimeridian=fix_antimeridian,
-            )
-        )
+        tokens = set(linetrace(geometry, resolution, fix_antimeridian))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -247,10 +257,33 @@ class ISEA4TPandas:
         result = result.explode().to_frame(ISEA4T_COL)
         return self._df.join(result)
 
+    def linetrace(
+        self,
+        resolution: int,
+        explode: bool = False,
+        fix_antimeridian: Optional[str] = None,
+    ) -> AnyDataFrame:
+        """ISEA4T cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2isea4t.polyline2isea4t``.
+        """
+        result = self._df.apply(
+            lambda row: list(
+                linetrace(
+                    row.geometry, resolution, fix_antimeridian=fix_antimeridian
+                )
+            ),
+            axis=1,
+        )
+        if not explode:
+            return self._df.assign(**{ISEA4T_COL: result})
+        result = result.explode().to_frame(ISEA4T_COL)
+        return self._df.join(result)
+
     def isea4tbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -262,7 +295,7 @@ class ISEA4TPandas:
         """
         isea4t_col = ISEA4T_COL
         df = self.latlon2isea4t(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, isea4t_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, isea4t_col, agg, numeric_col, category_col)
         return result.isea4t.isea4t2geo(
             isea4t_col=isea4t_col, fix_antimeridian=fix_antimeridian
         )

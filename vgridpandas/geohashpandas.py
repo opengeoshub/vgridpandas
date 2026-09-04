@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Iterator
 from shapely.geometry import (
     Polygon,
     MultiPolygon,
@@ -9,6 +9,7 @@ import pandas as pd
 import geopandas as gpd
 from vgrid.conversion.latlon2dggs import latlon2geohash as latlon_to_geohash
 from vgrid.conversion.dggs2geo.geohash2geo import geohash2geo as geohash_to_geo
+from vgrid.conversion.vector2dggs.vector2geohash import polyline2geohash
 from pandas.core.frame import DataFrame
 from geopandas.geodataframe import GeoDataFrame
 from vgridpandas.utils.geo_helpers import dggs_ids_to_geodataframe
@@ -17,6 +18,7 @@ from vgridpandas.utils.const import GEOHASH_COL
 
 
 AnyDataFrame = Union[DataFrame, GeoDataFrame]
+MultiLineOrLine = Union[LineString, MultiLineString]
 
 
 from typing import Union, Set
@@ -82,14 +84,19 @@ def poly2geohash(
     return geohash_ids
 
 
+def linetrace(geometry: MultiLineOrLine, resolution: int) -> Iterator[str]:
+    """Trace a (Multi)LineString with Geohash cells (same walk as ``polyline2geohash``)."""
+    rows = polyline2geohash(geometry, resolution, include_properties=False)
+    for row in rows:
+        yield row[GEOHASH_COL]
+
+
 def polyfill_row(geometry, resolution, predicate=None, compact=False) -> list:
     """Return cell ids covering a single row geometry."""
     if isinstance(geometry, (Polygon, MultiPolygon)):
         tokens = set(poly2geohash(geometry, resolution, predicate, compact))
     elif isinstance(geometry, (LineString, MultiLineString)):
-        tokens = set(
-            poly2geohash(geometry, resolution, predicate="intersect", compact=False)
-        )
+        tokens = set(linetrace(geometry, resolution))
     else:
         raise TypeError(f"Unknown type {type(geometry)}")
     return list(tokens)
@@ -196,10 +203,23 @@ class GeohashPandas:
         result = result.explode().to_frame(GEOHASH_COL)
         return self._df.join(result)
 
+    def linetrace(self, resolution: int, explode: bool = False) -> AnyDataFrame:
+        """Geohash cell representation of a (Multi)LineString traced along its vertices.
+
+        Uses the same walk as ``vgrid.conversion.vector2dggs.vector2geohash.polyline2geohash``.
+        """
+        result = self._df.apply(
+            lambda row: list(linetrace(row.geometry, resolution)), axis=1
+        )
+        if not explode:
+            return self._df.assign(**{GEOHASH_COL: result})
+        result = result.explode().to_frame(GEOHASH_COL)
+        return self._df.join(result)
+
     def geohashbin(
         self,
         resolution: int,
-        stats: str = "count",
+        agg: str = "count",
         numeric_col: str = None,
         category_col: str = None,
         lat_col: str = "lat",
@@ -210,5 +230,5 @@ class GeohashPandas:
         """
         geohash_col = GEOHASH_COL
         df = self.latlon2geohash(resolution, lat_col, lon_col)
-        result = aggregate_bin(df, geohash_col, stats, numeric_col, category_col)
+        result = aggregate_bin(df, geohash_col, agg, numeric_col, category_col)
         return result.geohash.geohash2geo(geohash_col=geohash_col)
